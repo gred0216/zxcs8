@@ -4,7 +4,8 @@ from bs4 import BeautifulSoup
 import re
 import os
 
-def get_book_links(sortlink):	
+def get_book_links(sortlink):
+	# retrieve all book link from the category
 	r = requests.get(sortlink)
 	to_get = sortlink + '/page/'
 	soup = BeautifulSoup(r.text)
@@ -22,7 +23,7 @@ def get_book_links(sortlink):
 	return books
 
 def get_book_info(page):
-	# get the voting evaluation of the book, donwload page link and title
+	# retrieve the voting evaluation of the book, donwload page link and title
 	browser = webdriver.Chrome()
 	browser.get(page)
 	contents = browser.find_element_by_id('content')
@@ -35,7 +36,7 @@ def get_book_info(page):
 	downhref = browser.find_element_by_class_name('down_2')
 	downlink = downhref.find_element_by_css_selector('a').get_attribute('href')	
 	browser.close()
-	return (mood0,mood1,mood2,mood3,mood4,downlink,title)
+	return (title,mood0,mood1,mood2,mood3,mood4,downlink)
 
 class Book:
 	def __init__(self,name,s1,s2,s3,s4,s5,link):
@@ -47,25 +48,37 @@ class Book:
 		self.s5 = s5
 		self.link = link
 
-def download(book):
-	try:
-		g = requests.get(book.link)
-	except:
-		return 'link error'
-	else:
-		if not g.ok:
-			return str(g.status_code) + 'error'
+	def download(self):
+		try:
+			g = requests.get(self.link)
+		except:
+			return 'link error'
 		else:
-			dlsoup = BeautifulSoup(g.text)
-			spans = [ x.a for x in dlsoup.find_all('span') ]
-			dllinks = [ y.get('href') for y in spans.a if y]
-	os.makedirs('./download/',exist_ok=True)
-	dl = requests.get(dllinks[0])
-	if dl.ok
+			if not g.ok:
+				return str(g.status_code) + 'error'
+			else:
+				dlsoup = BeautifulSoup(g.text)
+				spans = [ x.a for x in dlsoup.find_all('span') ]
+				dllinks = [y.get('href') for y in spans if y]				
+		for i in dllinks:
+			dl = requests.get(i)
+			save = False
+			if dl.ok:
+				break
+			elif i == dllinks[-1]:
+				return 'file unavailable'
+		os.makedirs('./download/',exist_ok=True)
+		with open('./download/'+self.name+'.rar','wb') as f:
+			f.write(dl.content)
+
+
+
+
 
 
 
 test = 'http://www.zxcs8.com/sort/40'	
+test2 = 'http://www.zxcs8.com/post/10927'
 # links = get_book_links(test)
 print()
 
