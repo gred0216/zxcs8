@@ -2,8 +2,26 @@ from selenium import webdriver
 import requests
 from bs4 import BeautifulSoup
 import re
+import os
 
-def getmood(page):
+def get_book_links(sortlink):	
+	r = requests.get(sortlink)
+	to_get = sortlink + '/page/'
+	soup = BeautifulSoup(r.text)
+	pages = soup.find(id='pagenavi')
+	last_page = pages.find_all('a')[-1].get('href')
+	books = []
+	last_page_num = int(re.search('page/([0-9]*)',last_page)[1])
+	for i in range(1,last_page_num+1):
+		currect_page = to_get + str(i)
+		c = requests.get(currect_page)
+		soup2 = BeautifulSoup(c.text)
+		alldt = soup2.find_all('dt')
+		for booklink in alldt:
+			books.append(booklink.a.get('href'))
+	return books
+
+def get_book_info(page):
 	# get the voting evaluation of the book, donwload page link and title
 	browser = webdriver.Chrome()
 	browser.get(page)
@@ -19,14 +37,35 @@ def getmood(page):
 	browser.close()
 	return (mood0,mood1,mood2,mood3,mood4,downlink,title)
 
-tlink = 'http://www.zxcs8.com/sort/23'
-r = requests.get(tlink)
-soup = BeautifulSoup(r.text)
-pages = soup.find(id='pagenavi')
-current_page = pages.find('span').string
-last_page = pages.find_all('a')[-1].get('href')
-last_page_num = int(re.search('page/([0-9]*)',last_page)[1])
-alldt = soup.find_all('dt')
-books = []
-for booklink in alldt:
-	books.append(booklink.a.get('href'))
+class Book:
+	def __init__(self,name,s1,s2,s3,s4,s5,link):
+		self.name = name
+		self.s1 = s1
+		self.s2 = s2
+		self.s3 = s3
+		self.s4 = s4
+		self.s5 = s5
+		self.link = link
+
+def download(book):
+	try:
+		g = requests.get(book.link)
+	except:
+		return 'link error'
+	else:
+		if not g.ok:
+			return str(g.status_code) + 'error'
+		else:
+			dlsoup = BeautifulSoup(g.text)
+			spans = [ x.a for x in dlsoup.find_all('span') ]
+			dllinks = [ y.get('href') for y in spans.a if y]
+	os.makedirs('./download/',exist_ok=True)
+	dl = requests.get(dllinks[0])
+	if dl.ok
+
+
+
+test = 'http://www.zxcs8.com/sort/40'	
+# links = get_book_links(test)
+print()
+
