@@ -4,21 +4,26 @@ from bs4 import BeautifulSoup
 import re
 import os
 import time
+import json
 
 
 class Book:
-    def __init__(self, name, s1, s2, s3, s4, s5, link):
+    def __init__(self, name, author, intro,
+     score1, score2, score3, score4, score5, url, dllink):
         self.name = name
-        self.s1 = s1
-        self.s2 = s2
-        self.s3 = s3
-        self.s4 = s4
-        self.s5 = s5
-        self.link = link
+        self.author = author
+        self.intro = intro
+        self.score1 = score1
+        self.score2 = score2
+        self.score3 = score3
+        self.score4 = score4
+        self.score5 = score5
+        self.url = url
+        self.dllink = dllink
 
     def download(self):
         try:
-            g = requests.get(self.link)
+            g = requests.get(self.dllink)
         except Exception as err:
             return 'Unexpected Error', err
         else:
@@ -38,6 +43,7 @@ class Book:
             os.makedirs('./download/', exist_ok=True)
         with open('./download/' + self.name + '.rar', 'wb') as f:
             f.write(dl.content)
+        print("download completed")
 
 
 class Shelf:
@@ -89,8 +95,23 @@ class Shelf:
     def get_book_num(self):
         return len(self.content)
 
+    def add_all_book(self):
+        # add all books in the category to the shelf
+        for link in self.book_links:
+            if not self.book_links.index(link) % 50:
+                print('running book %s/%s'
+                    % (self.book_links.index(link), len(self.link)))
+            info = get_book_info(link)
+            tb = create_book(info)
+            self.add_book(tb)
+            time.sleep(3)
 
-def get_sort_link():
+    def to_json(self):
+        return json.dumps(self, default=lambda o: o.__dict__,
+            sort_keys=True, indent=4)
+
+
+def get_category():
     base = 'http://www.zxcs8.com/sort/'
     sort_results = []
     error = []
@@ -111,25 +132,39 @@ def get_sort_link():
     return sort_results, error
 
 
-def get_book_info(page):
+def search_tag():
+    pass
+
+
+def get_book_info(page_url):
     # retrieve the voting evaluation of the book, donwload page link and title
     browser = webdriver.Chrome('C:\Python\chromedriver.exe')
-    browser.get(page)
-    contents = browser.find_element_by_id('content')
-    title = contents.find_element_by_css_selector('h1').text
+    browser.get(page_url)
+    content = browser.find_element_by_id('content')
+    content_h1 = content.find_element_by_css_selector('h1').text
+    title = re.search('(.*?)作者：(.*)', content_h1)
+    name, author = title.group(1), title.group(2)
+    tag_p = browser.find_elements_by_tag_name('p')
+    for p in tag_p:
+        temp_text = re.match('【TX', p.text)
+        if temp_text:
+            break
+    intro = re.findall('【内容简介】：\s(.*)', temp_text.string, flags=re.S)[0]
     mood0 = browser.find_element_by_id('moodinfo0').text
     mood1 = browser.find_element_by_id('moodinfo1').text
     mood2 = browser.find_element_by_id('moodinfo2').text
     mood3 = browser.find_element_by_id('moodinfo3').text
     mood4 = browser.find_element_by_id('moodinfo4').text
-    downhref = browser.find_element_by_class_name('down_2')
-    downlink = downhref.find_element_by_css_selector('a').get_attribute('href')
+    down_2 = browser.find_element_by_class_name('down_2')
+    dl_link = down_2.find_element_by_css_selector('a').get_attribute('href')
     browser.quit()
-    return (title, mood0, mood1, mood2, mood3, mood4, downlink)
+    return (name, author, intro,
+     mood0, mood1, mood2, mood3, mood4, page_url, dl_link)
 
 
 def create_book(info):
-    return Book(info[0], info[1], info[2], info[3], info[4], info[5], info[6])
+    return Book(info[0], info[1], info[2], info[3],
+        info[4], info[5], info[6], info[7], info[8], info[9])
 
 
 def create_category_shelf(category):
@@ -142,18 +177,12 @@ test3 = ('http://www.zxcs8.com/sort/26', '奇幻·玄幻')
 
 
 print()
+'''
 s1 = create_category_shelf(test3)
-l1 = s1.get_book_links()
-for link in s1.book_links:
-    if not s1.book_links.index(link) % 50 or link is s1.book_links[-1]:
-        print('running book %s/%s'
-        % (s1.book_links.index(link), s1.get_book_num()))
-    info = get_book_info(link)
-    tb = create_book(info)
-    s1.add_book(tb)
-    time.sleep(3)
-print()
+s1.get_book_links()
 
-for book in s1.content:
-    if book.s1 > book.s5 and book.s1 / book.s5 > 3:
-        book.download()
+for i in range(3):
+    tmp = get_book_info(s1.book_links[i])
+    s1.add_book(create_book(tmp))
+'''
+g1 = get_book_info(test2)
