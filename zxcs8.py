@@ -5,25 +5,26 @@ import re
 import os
 import time
 import json
+import zhconv
+from collections import namedtuple
 
 
-class Book:
-    def __init__(self, name, author, intro,
-     score1, score2, score3, score4, score5, url, dllink):
-        self.name = name
-        self.author = author
-        self.intro = intro
-        self.score1 = score1
-        self.score2 = score2
-        self.score3 = score3
-        self.score4 = score4
-        self.score5 = score5
-        self.url = url
-        self.dllink = dllink
+class Book(dict):
+    def __init__(self, info):
+        self['name'] = info.get('name')
+        self['author'] = info.get('author')
+        self['intro'] = info.get('intro')
+        self['score1'] = info.get('score1')
+        self['score2'] = info.get('score2')
+        self['score3'] = info.get('score3')
+        self['score4'] = info.get('score4')
+        self['score5'] = info.get('score5')
+        self['url'] = info.get('url')
+        self['dllink'] = info.get('dllink')
 
     def download(self):
         try:
-            g = requests.get(self.dllink)
+            g = requests.get(self['dllink'])
         except Exception as err:
             return 'Unexpected Error', err
         else:
@@ -32,37 +33,40 @@ class Book:
             else:
                 dlsoup = BeautifulSoup(g.text)
                 spans = [x.a for x in dlsoup.find_all('span')]
-                dllinks = [y.get('href') for y in spans if y]
-        for i in dllinks:
+                filelinks = [y.get('href') for y in spans if y]
+        for i in filelinks:
             dl = requests.get(i)
             if dl.ok:
                 break
-            elif i == dllinks[-1]:
+            elif i == filelinks[-1]:
                 return 'file unavailable'
         if not os.path.isdir('./download/'):
             os.makedirs('./download/', exist_ok=True)
-        with open('./download/' + self.name + '.rar', 'wb') as f:
+        with open('./download/' + self['name'] + '.rar', 'wb') as f:
             f.write(dl.content)
         print("download completed")
 
+    def to_json(self):
+        return json.dumps(self)
+
 
 class Shelf:
-    def __init__(self, url, name):
+    def __init__(self, url='', name=''):
         self.url = url
         self.name = name
-        self.content = []
+        self.content = {}
         self.book_links = []
         self.failed_page = []
 
     def add_book(self, book):
-        if book not in self.content:
-            self.content.append(book)
+        if book['name'] not in self.content:
+            self.content[book['name']] = book
 
     def delete_book(self, book):
-        try:
-            self.content.remove(book)
-        except ValueError as err:
-            return book.name + ' is not in the shelf'
+        if book['name'] in self.content:
+            del self.content[book['name']]
+        else:
+            return book['name'] + ' is not in the shelf'
 
     def get_book_links(self):
         # retrieve all book link from the category
@@ -138,42 +142,79 @@ def search_tag():
 
 def get_book_info(page_url):
     # retrieve the voting evaluation of the book, donwload page link and title
-    browser = webdriver.Chrome('C:\Python\chromedriver.exe')
+    result = {}
+    result['url'] = page_url
+    browser = webdriver.Chrome()
     browser.get(page_url)
     content = browser.find_element_by_id('content')
     content_h1 = content.find_element_by_css_selector('h1').text
     title = re.search('(.*?)作者：(.*)', content_h1)
-    name, author = title.group(1), title.group(2)
+    result['name'] = title.group(1)
+    result['author'] = title.group(2)
+
     tag_p = browser.find_elements_by_tag_name('p')
     for p in tag_p:
         temp_text = re.match('【TX', p.text)
         if temp_text:
             break
-    intro = re.findall('【内容简介】：\s(.*)', temp_text.string, flags=re.S)[0]
-    mood0 = browser.find_element_by_id('moodinfo0').text
-    mood1 = browser.find_element_by_id('moodinfo1').text
-    mood2 = browser.find_element_by_id('moodinfo2').text
-    mood3 = browser.find_element_by_id('moodinfo3').text
-    mood4 = browser.find_element_by_id('moodinfo4').text
+    result['intro'] = re.findall('【内容简介】：\s(.*)', temp_text.string, flags=re.S)[0]
+    result['score1'] = browser.find_element_by_id('moodinfo0').text
+    result['score2'] = browser.find_element_by_id('moodinfo1').text
+    result['score3'] = browser.find_element_by_id('moodinfo2').text
+    result['score4'] = browser.find_element_by_id('moodinfo3').text
+    result['score5'] = browser.find_element_by_id('moodinfo4').text
+
     down_2 = browser.find_element_by_class_name('down_2')
-    dl_link = down_2.find_element_by_css_selector('a').get_attribute('href')
+    result['dllink'] = down_2.find_element_by_css_selector('a').get_attribute('href')
+
     browser.quit()
-    return (name, author, intro,
-     mood0, mood1, mood2, mood3, mood4, page_url, dl_link)
+    return result
 
 
 def create_book(info):
-    return Book(info[0], info[1], info[2], info[3],
-        info[4], info[5], info[6], info[7], info[8], info[9])
+    return Book(info)
 
 
 def create_category_shelf(category):
     return Shelf(category[0], category[1])
 
 
+def convert_to_zhtw(word):
+    return zhconv.convert(word, 'zh-tw')
+
+
+def convert_to_zhcn(word):
+    return zhconv.convert(word, 'zh-cn')
+
+
+def from_json(json_object):
+    if 'content' not in json_object and 'author' in json_object:
+        return Book(json.loads(json_object))
+    elif 'book_links' in json_object:
+        pat = '(.*?)("content": {)(.*?)("failed_page".*)'
+        re_result = re.findall(pat, json_object, flags=re.S)[0]
+        no_content = re_result[0] + re_result[3]
+        books = re.findall('{.*?}', re_result[2], flags=re.S)
+        shelf_info = json.loads(no_content,
+            object_hook=lambda d: namedtuple('temp_class', d.keys())(*d.values()))
+        temp_shelf = Shelf(shelf_info.url, shelf_info.name)
+        temp_shelf.book_links = shelf_info.book_links
+        temp_shelf.failed_page = shelf_info.failed_page
+        for book in books:
+            print(book)
+            temp_shelf.add_book(from_json(book))
+        return temp_shelf
+
+
+        
+
+
+
+
 test = 'http://www.zxcs8.com/sort/40'
 test2 = 'http://www.zxcs8.com/post/10927'
 test3 = ('http://www.zxcs8.com/sort/26', '奇幻·玄幻')
+test4 = 'http://www.zxcs8.com/post/10920'
 
 
 print()
@@ -185,4 +226,13 @@ for i in range(3):
     tmp = get_book_info(s1.book_links[i])
     s1.add_book(create_book(tmp))
 '''
-g1 = get_book_info(test2)
+
+
+g1 = {'url': 'http://www.zxcs8.com/post/10927', 'name': '《重生之小玩家》（校对版全本）', 'author': '吹个大气球9', 'intro': '世事如棋，有人身在局中当棋子，有人手握棋子做玩家。\n大玩家摆弄苍生，小玩家自得富贵。\n秦风活过一世再重来，睁开眼，便要从棋子变玩家。\n然则大玩家不好当，姑且，就做个小玩家，富贵一生吧。', 'score1': '118', 'score2': '7', 'score3': '9', 'score4': '9', 'score5': '127', 'dllink': 'http://www.zxcs8.com/download.php?id=10927'}
+g2 = {'url': 'http://www.zxcs8.com/post/10920', 'name': '《白银之轮》（校对版全本）', 'author': '悲剧山伯爵', 'intro': '蝇王撒的奇妙作死之旅……\n（一位顶级灾神的成长史)\n这里有新派黑科技+古典主义魔法，灾神+宇宙人，东洲妖怪+皇家菠萝，共济会喵星人+光照会汪星人，甜党+咸党，触手魔女+地狱罪族，蒸汽飞艇+黑科技飞碟，黑科技装甲+受孕指环，数百款不同风格的亡灵，近万种口味各异的蝇妖精供您选择。\n锡兰是个充满安宁与祥和的美好世界，每天都有充满正能量的事情上演。\n三观端正，积极向上……', 'score1': '225', 'score2': '27', 'score3': '10', 'score4': '13', 'score5': '135', 'dllink': 'http://www.zxcs8.com/download.php?id=10920'}
+
+b1 = Book(g1)
+b2 = Book(g2)
+s1 = Shelf()
+s1.add_book(b1)
+s1.add_book(b2)
