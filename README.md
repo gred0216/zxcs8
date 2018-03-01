@@ -9,3 +9,4 @@ This is a crawler of [知軒藏書](http://www.zxcs8.com/map.html).
 * Using scores of books from the site as filter and download books.
 * (Not finished) Manually set filter rule.
 * (Not finished) Search books by words.
+* Save the shelf and book as json.
