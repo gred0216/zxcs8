@@ -20,6 +20,7 @@ class Book(dict):
         self['score3'] = info.get('score3')
         self['score4'] = info.get('score4')
         self['score5'] = info.get('score5')
+        self['size'] = info.get('size')
         self['url'] = info.get('url')
         self['dllink'] = info.get('dllink')
 
@@ -84,6 +85,7 @@ class Shelf:
         else:
             return book['name'] + ' is not in the shelf'
 
+    '''
     def get_book_link(self, page):
         currect_page = self.pages + page
         c = requests.get(currect_page)
@@ -94,6 +96,7 @@ class Shelf:
             all_dt = soup2.find_all('dt')
             for booklink in all_dt:
                 self.book_links.append(booklink.a.get('href'))
+    '''
 
     def get_book_links(self):
         # retrieve all book link from the category
@@ -105,12 +108,23 @@ class Shelf:
             if not r.ok:
                 return str(r.status_code) + ' error'
             else:
-                mypool = mp.Pool()
                 soup = BeautifulSoup(r.text)
                 pages = soup.find(id='pagenavi')
                 last_page = pages.find_all('a')[-1].get('href')
                 last_page_num = int(re.search('page/([0-9]*)', last_page)[1])
-                mypool.map(self.get_book_link, range(1, last_page_num + 1))
+                to_get = self.url + '/page/'
+                for i in range(1, last_page_num + 1):
+                    currect_page = to_get + str(i)
+                    c = requests.get(currect_page)
+                    if not c.ok:
+                        self.failed_page.append(currect_page)
+                    else:
+                        soup2 = BeautifulSoup(c.text)
+                        all_dt = soup2.find_all('dt')
+                        for booklink in all_dt:
+                            self.book_links.append(booklink.a.get('href'))
+                    if not i % 10 or i == last_page_num:
+                        print('running page %s/%s' % (i, last_page_num))
 
     def get_book_num(self):
         return len(self.content)
@@ -160,32 +174,33 @@ def get_book_info(page_url):
     # retrieve the voting evaluation of the book, donwload page link and title
     result = {}
     result['url'] = page_url
-    browser = webdriver.Chrome()
-    browser.get(page_url)
-    content = browser.find_element_by_id('content')
-    content_h1 = content.find_element_by_css_selector('h1').text
-    title = re.search('(.*?)作者：(.*)', content_h1)
+    book_score = ('http://www.zxcs8.com/content/plugins/'
+                  'cgz_xinqing/cgz_xinqing_action.php?action=show&id=')
+    book_id = re.search('post/(\d*)', page_url).groups()[0]
+    r = requests.get(page_url)
+    soup4 = BeautifulSoup(r.text, 'lxml')
+    content = soup4.find('div', id='content')
+    title = re.search('(.*?)作者：(.*)', content.h1.text)
     result['name'] = title.group(1)
     result['author'] = title.group(2)
-
-    tag_p = browser.find_elements_by_tag_name('p')
+    tag_p = soup4.find_all('p')
     for p in tag_p:
-        temp_text = re.match('【TX', p.text)
+        temp_text = re.search('【TX', p.text)
         if temp_text:
+            temp_text = temp_text.string.replace('\u3000', '')
             break
-    result['intro'] = re.findall('【内容简介】：\s(.*)',
-                                 temp_text.string, flags=re.S)[0]
-    result['score1'] = browser.find_element_by_id('moodinfo0').text
-    result['score2'] = browser.find_element_by_id('moodinfo1').text
-    result['score3'] = browser.find_element_by_id('moodinfo2').text
-    result['score4'] = browser.find_element_by_id('moodinfo3').text
-    result['score5'] = browser.find_element_by_id('moodinfo4').text
+    res = re.search('【TXT大小】：(.*?)【内容简介】：(.*)', temp_text, flags=re.S)
+    result['size'], result['intro'] = res.group(1), res.group(2)
+    result['dllink'] = soup4.find(class_='down_2').a.get('href')
 
-    down_2 = browser.find_element_by_class_name('down_2')
-    result['dllink'] = (down_2.find_element_by_css_selector('a').
-                        get_attribute('href'))
+    scores = requests.get(book_score + book_id).text
+    scores = scores.split(',')
+    result['score1'] = scores[0]
+    result['score2'] = scores[1]
+    result['score3'] = scores[2]
+    result['score4'] = scores[3]
+    result['score5'] = scores[4]
 
-    browser.quit()
     return result
 
 
@@ -222,7 +237,6 @@ def from_json(json_object):
             print(book)
             temp_shelf.add_book(from_json(book))
         return temp_shelf
-
 
 
 test = 'http://www.zxcs8.com/sort/40'
