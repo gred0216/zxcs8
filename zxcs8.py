@@ -1,4 +1,3 @@
-from selenium import webdriver
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -8,6 +7,7 @@ import json
 import zhconv
 from collections import namedtuple
 import multiprocessing as mp
+from shutil import copyfileobj
 
 
 class Book(dict):
@@ -25,6 +25,7 @@ class Book(dict):
         self['dllink'] = info.get('dllink')
 
     def download(self):
+        # get book download link from book link
         try:
             g = requests.get(self['dllink'])
         except Exception as err:
@@ -37,15 +38,17 @@ class Book(dict):
                 spans = [x.a for x in dlsoup.find_all('span')]
                 filelinks = [y.get('href') for y in spans if y]
         for i in filelinks:
-            dl = requests.get(i)
+            dl = requests.get(i, stream=True)
+            filename_extension = re.search('\d/.*?(\..*)', i)[1]
             if dl.ok:
                 break
             elif i == filelinks[-1]:
                 return 'file unavailable'
         if not os.path.isdir('./download/'):
-            os.makedirs('./download/', exist_ok=True)
-        with open('./download/' + self['name'] + '.rar', 'wb') as f:
-            f.write(dl.content)
+            os.makedirs('./download/')
+        with open('./download/' + self['name'] +
+                  filename_extension, 'wb') as f:
+            copyfileobj(dl.raw, f)
         print("download completed")
 
     def to_json(self):
@@ -118,6 +121,7 @@ class Shelf:
                     c = requests.get(currect_page)
                     if not c.ok:
                         self.failed_page.append(currect_page)
+                        continue
                     else:
                         soup2 = BeautifulSoup(c.text)
                         all_dt = soup2.find_all('dt')
@@ -130,15 +134,19 @@ class Shelf:
         return len(self.content)
 
     def add_all_book(self):
-        # add all books in the category to the shelf
-        for link in self.book_links:
-            if not self.book_links.index(link) % 50:
-                print('running book %s/%s'
-                      % (self.book_links.index(link), len(self.link)))
-            info = get_book_info(link)
-            tb = create_book(info)
-            self.add_book(tb)
-            time.sleep(3)
+        # add all books in the category book links to the shelf and delete link
+        for i in range(len(self.book_links)):
+            if not i % 50:
+                print('running book %s/%s' % (i, len(self.book_links)))
+            info = get_book_info(self.book_links[0])
+            if not info:
+                self.failed_page.append(self.book_links[0])
+                del self.book_links[0]
+            else:
+                tb = create_book(info)
+                del self.book_links[0]
+                self.add_book(tb)
+                time.sleep(3)
 
     def to_json(self):
         return json.dumps(self, default=lambda o: o.__dict__,
@@ -173,11 +181,27 @@ def search_tag():
 def get_book_info(page_url):
     # retrieve the voting evaluation of the book, donwload page link and title
     result = {}
+    if 'zxcs' not in page_url:
+        return result
     result['url'] = page_url
     book_score = ('http://www.zxcs8.com/content/plugins/'
                   'cgz_xinqing/cgz_xinqing_action.php?action=show&id=')
     book_id = re.search('post/(\d*)', page_url).groups()[0]
-    r = requests.get(page_url)
+    retry = 3
+    while retry:
+        try:
+            r = requests.get(page_url, timeout=1)
+        except Exception as e:
+            retry -= 1
+            print('Exception occured. Retrying in 3 seconds.'
+                  ' Retries left: %d' % retry)
+            if retry is not 0:
+                time.sleep(3)
+            else:
+                print('No more retry!')
+                return None
+            continue
+        break
     soup4 = BeautifulSoup(r.text, 'lxml')
     content = soup4.find('div', id='content')
     title = re.search('(.*?)作者：(.*)', content.h1.text)
@@ -285,3 +309,4 @@ s1.add_book(b2)
 myrule = ['A>E', 'A+B>D+E', 'A/E>1.5']
 
 s2 = create_category_shelf(test3)
+s3 = Shelf()
