@@ -8,5 +8,5 @@ This is a crawler of [知軒藏書](http://www.zxcs8.com/map.html).
 * Retrieve information of all books from the category.
 * Using scores of books from the site as filter and download books.
 * (Not finished) Manually set filter rule.
-* (Not finished) Search books by words.
+* Search books by words.
 * Save the shelf and book as json.
