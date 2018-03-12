@@ -67,14 +67,15 @@ class Book(dict):
 
 
 class Shelf:
-    def __init__(self, url='', name=''):
+    def __init__(self, url='', name='', shelftype='category'):
         self.url = url
         self.name = name
         self.content = {}
         self.book_links = []
         self.failed_page = []
+        self.shelftype = shelftype
         if url:
-            self.pages = url + '/page/'
+            self.pages = self.url + '/page/'
         else:
             self.pages = ''
 
@@ -113,9 +114,16 @@ class Shelf:
             else:
                 soup = BeautifulSoup(r.text)
                 pages = soup.find(id='pagenavi')
-                last_page = pages.find_all('a')[-1].get('href')
-                last_page_num = int(re.search('page/([0-9]*)', last_page)[1])
-                to_get = self.url + '/page/'
+                if pages.contents:
+                    last_page = [i for i in pages.contents if i != ' ']
+                    last_page = last_page[-1].get('href')
+                    last_page_num = int(re.search('page.(\d+)', last_page)[1])
+                else:
+                    last_page_num = 1
+                if self.shelftype is 'category':
+                    to_get = self.url + '/page/'
+                elif self.shelftype is 'search':
+                    to_get = self.url + '&page='
                 for i in range(1, last_page_num + 1):
                     currect_page = to_get + str(i)
                     c = requests.get(currect_page)
@@ -170,12 +178,21 @@ def get_category():
                 soup3 = BeautifulSoup(r.text)
                 category = soup3.find(id='ptop')
                 name = category.find_all('a')[1].text
-                sort_results.append((r.url, name))
+                sort_results.append((name, r.url))
     return sort_results, error
 
 
-def search_tag():
-    pass
+def search(text):
+    search_url = 'http://www.zxcs8.com/index.php?keyword='
+    search_text = convert_to_zhcn(text)
+    search_page = search_url + search_text
+    name = '搜索 "%s" 的结果' % text
+    s = requests.get(search_page)
+    soup5 = BeautifulSoup(s.text)
+    if soup5.find(class_='none'):
+        return 'Sorry, no results matching your criteria were found'
+    else:
+        return Shelf(search_page, name, 'search')
 
 
 def get_book_info(page_url):
@@ -308,5 +325,9 @@ s1.add_book(b2)
 
 myrule = ['A>E', 'A+B>D+E', 'A/E>1.5']
 
+
 s2 = create_category_shelf(test3)
 s3 = Shelf()
+
+test5 = 'http://www.zxcs8.com/index.php?keyword=5'
+test6 = 'http://www.zxcs8.com/tag/%E9%83%BD%E5%B8%82%E7%94%9F%E6%B4%BB'
