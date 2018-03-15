@@ -62,8 +62,10 @@ class Book(dict):
         C = int(self['score3'])
         D = int(self['score4'])
         E = int(self['score5'])
-        for rule in rules:
-            check_rule = check_rule and eval(rule)
+        while check_rule:
+            for rule in rules:
+                check_rule = check_rule and eval(rule)
+            break
         return check_rule
 
 
@@ -149,6 +151,15 @@ class Shelf:
         return json.dumps(self, default=lambda o: o.__dict__,
                           sort_keys=True, indent=4)
 
+    def download_by_rule(self, book):
+        if book.check_rules(myrule):
+            book.download()
+
+    def download_all_by_rule(self):
+        jobs = ([gevent.spawn(self.download_by_rule, book[1])
+                 for book in self.content.items()])
+        gevent.joinall(jobs)
+
 
 def search(text):
     search_url = 'http://www.zxcs8.com/index.php?keyword='
@@ -164,7 +175,7 @@ def search(text):
 
 
 def get_book_info(page_url):
-    # retrieve the voting evaluation of the book, donwload page link and title
+    # retrieve the voting evaluation of the book, download page link and title
     result = {}
     if 'zxcs' not in page_url:
         return result
@@ -175,7 +186,7 @@ def get_book_info(page_url):
     retry = 3
     while retry:
         try:
-            r = requests.get(page_url, timeout=3)
+            r = requests.get(page_url, timeout=5)
         except Exception as e:
             retry -= 1
             print(e, 'Exception occured. Retrying in 3 seconds.'
@@ -299,16 +310,9 @@ myrule = ['A>E', 'A+B>D+E', 'A/E>1.5']
 s2 = create_category_shelf(test3)
 
 test5 = 'http://www.zxcs8.com/index.php?keyword=5'
-test6 = 'http://www.zxcs8.com/tag/%E5%8F%A4%E6%AD%A6%E6%9C%BA%E7%94%B2'
+test6 = 'http://www.zxcs8.com/tag/%E5%8F%A6%E7%B1%BB%E5%B9%BB%E6%83%B3'
 test7 = 'http://www.zxcs8.com/index.php?keyword=异界'
 
 s3 = Shelf(test6, 'test6')
 s4 = Shelf(test7, 'test7', 'search')
 
-s3.get_book_links()
-'''
-s3.get_book_num()
-s3.from_link_add_book()
-s3.get_book_num()
-'''
-s3.add_all_book()
