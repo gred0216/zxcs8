@@ -6,7 +6,8 @@ import time
 import json
 import zhconv
 from collections import namedtuple
-import multiprocessing as mp
+import gevent
+from gevent import monkey
 from shutil import copyfileobj
 
 
@@ -74,8 +75,10 @@ class Shelf:
         self.book_links = []
         self.failed_page = []
         self.shelftype = shelftype
-        if url:
+        if url and self.shelftype == 'category':
             self.pages = self.url + '/page/'
+        elif url and self.shelftype == 'search':
+            self.pages = self.url + '&page='
         else:
             self.pages = ''
 
@@ -89,9 +92,8 @@ class Shelf:
         else:
             return book['name'] + ' is not in the shelf'
 
-    '''
     def get_book_link(self, page):
-        currect_page = self.pages + page
+        currect_page = self.pages + str(page)
         c = requests.get(currect_page)
         if not c.ok:
             self.failed_page.append(currect_page)
@@ -100,7 +102,7 @@ class Shelf:
             all_dt = soup2.find_all('dt')
             for booklink in all_dt:
                 self.book_links.append(booklink.a.get('href'))
-    '''
+        time.sleep(3)
 
     def get_book_links(self):
         # retrieve all book link from the category
@@ -120,66 +122,32 @@ class Shelf:
                     last_page_num = int(re.search('page.(\d+)', last_page)[1])
                 else:
                     last_page_num = 1
-                if self.shelftype is 'category':
-                    to_get = self.url + '/page/'
-                elif self.shelftype is 'search':
-                    to_get = self.url + '&page='
-                for i in range(1, last_page_num + 1):
-                    currect_page = to_get + str(i)
-                    c = requests.get(currect_page)
-                    if not c.ok:
-                        self.failed_page.append(currect_page)
-                        continue
-                    else:
-                        soup2 = BeautifulSoup(c.text)
-                        all_dt = soup2.find_all('dt')
-                        for booklink in all_dt:
-                            self.book_links.append(booklink.a.get('href'))
-                    if not i % 10 or i == last_page_num:
-                        print('running page %s/%s' % (i, last_page_num))
+                jobs = ([gevent.spawn(self.get_book_link, page)
+                         for page in range(1, last_page_num + 1)])
+                gevent.joinall(jobs)
 
     def get_book_num(self):
         return len(self.content)
 
+    def from_link_add_book(self, i):
+        info = get_book_info(self.book_links[i])
+        if not info:
+            self.failed_page.append(self.book_links[i])
+        else:
+            tb = create_book(info)
+            self.add_book(tb)
+            time.sleep(3)
+
     def add_all_book(self):
         # add all books in the category book links to the shelf and delete link
-        for i in range(len(self.book_links)):
-            if not i % 50:
-                print('running book %s/%s' % (i, len(self.book_links)))
-            info = get_book_info(self.book_links[0])
-            if not info:
-                self.failed_page.append(self.book_links[0])
-                del self.book_links[0]
-            else:
-                tb = create_book(info)
-                del self.book_links[0]
-                self.add_book(tb)
-                time.sleep(3)
+        jobs = ([gevent.spawn(self.from_link_add_book, i)
+                 for i in range(len(self.book_links))])
+        gevent.joinall(jobs)
+        self.book_links.clear()
 
     def to_json(self):
         return json.dumps(self, default=lambda o: o.__dict__,
                           sort_keys=True, indent=4)
-
-
-def get_category():
-    base = 'http://www.zxcs8.com/sort/'
-    sort_results = []
-    error = []
-    for i in range(1, 100):
-        try:
-            r = requests.get(base + str(i))
-        except Exception as err:
-            error.append(err)
-            print('Unexpected Error', err)
-        else:
-            if not r.ok:
-                error.append('page %s %s error' % (i, r.status_code))
-            else:
-                soup3 = BeautifulSoup(r.text)
-                category = soup3.find(id='ptop')
-                name = category.find_all('a')[1].text
-                sort_results.append((name, r.url))
-    return sort_results, error
 
 
 def search(text):
@@ -207,10 +175,10 @@ def get_book_info(page_url):
     retry = 3
     while retry:
         try:
-            r = requests.get(page_url, timeout=1)
+            r = requests.get(page_url, timeout=3)
         except Exception as e:
             retry -= 1
-            print('Exception occured. Retrying in 3 seconds.'
+            print(e, 'Exception occured. Retrying in 3 seconds.'
                   ' Retries left: %d' % retry)
             if retry is not 0:
                 time.sleep(3)
@@ -219,7 +187,7 @@ def get_book_info(page_url):
                 return None
             continue
         break
-    soup4 = BeautifulSoup(r.text, 'lxml')
+    soup4 = BeautifulSoup(r.text)
     content = soup4.find('div', id='content')
     title = re.search('(.*?)作者：(.*)', content.h1.text)
     result['name'] = title.group(1)
@@ -280,6 +248,8 @@ def from_json(json_object):
         return temp_shelf
 
 
+monkey.patch_all()
+
 test = 'http://www.zxcs8.com/sort/40'
 test2 = 'http://www.zxcs8.com/post/10927'
 test3 = ('http://www.zxcs8.com/sort/26', '奇幻·玄幻')
@@ -327,7 +297,18 @@ myrule = ['A>E', 'A+B>D+E', 'A/E>1.5']
 
 
 s2 = create_category_shelf(test3)
-s3 = Shelf()
 
 test5 = 'http://www.zxcs8.com/index.php?keyword=5'
-test6 = 'http://www.zxcs8.com/tag/%E9%83%BD%E5%B8%82%E7%94%9F%E6%B4%BB'
+test6 = 'http://www.zxcs8.com/tag/%E5%8F%A4%E6%AD%A6%E6%9C%BA%E7%94%B2'
+test7 = 'http://www.zxcs8.com/index.php?keyword=异界'
+
+s3 = Shelf(test6, 'test6')
+s4 = Shelf(test7, 'test7', 'search')
+
+s3.get_book_links()
+'''
+s3.get_book_num()
+s3.from_link_add_book()
+s3.get_book_num()
+'''
+s3.add_all_book()
