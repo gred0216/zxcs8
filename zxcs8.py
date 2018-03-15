@@ -12,25 +12,39 @@ from shutil import copyfileobj
 
 
 class Book(dict):
+    '''Book is a dictionary that stores information of book.'''
+
     def __init__(self, info):
-        self['name'] = info.get('name')
-        self['author'] = info.get('author')
-        self['intro'] = info.get('intro')
-        self['score1'] = info.get('score1')
-        self['score2'] = info.get('score2')
-        self['score3'] = info.get('score3')
-        self['score4'] = info.get('score4')
-        self['score5'] = info.get('score5')
-        self['size'] = info.get('size')
-        self['url'] = info.get('url')
-        self['dllink'] = info.get('dllink')
+        '''Create a new Book instance
+
+        Args:
+            info(dict): A dict contains book information
+        '''
+        self['name'] = info.get('name')  # book name
+        self['author'] = info.get('author')  # Author
+        self['intro'] = info.get('intro')  # Introduction
+        self['score1'] = info.get('score1')  # 仙草 excellent
+        self['score2'] = info.get('score2')  # 粮草 good
+        self['score3'] = info.get('score3')  # 干草 fair
+        self['score4'] = info.get('score4')  # 枯草 poor
+        self['score5'] = info.get('score5')  # 毒草 bad
+        self['size'] = info.get('size')  # compressed file size
+        self['url'] = info.get('url')  # website page of the book
+        self['dllink'] = info.get('dllink')  # download page of the book
 
     def download(self):
-        # get book download link from book link
+        '''Download the book.
+
+        The file will be in 'download' folder under current working directory.
+
+        Returns:
+            return if exception occured.
+
+        '''
         try:
             g = requests.get(self['dllink'])
-        except Exception as err:
-            return 'Unexpected Error', err
+        except Exception as e:
+            return 'Unexpected Error', e
         else:
             if not g.ok:
                 return str(g.status_code) + 'error'
@@ -38,6 +52,7 @@ class Book(dict):
                 dlsoup = BeautifulSoup(g.text)
                 spans = [x.a for x in dlsoup.find_all('span')]
                 filelinks = [y.get('href') for y in spans if y]
+
         for i in filelinks:
             dl = requests.get(i, stream=True)
             filename_extension = re.search('\d/.*?(\..*)', i)[1]
@@ -45,31 +60,43 @@ class Book(dict):
                 break
             elif i == filelinks[-1]:
                 return 'file unavailable'
+
         if not os.path.isdir('./download/'):
             os.makedirs('./download/')
         with open('./download/' + self['name'] +
                   filename_extension, 'wb') as f:
             copyfileobj(dl.raw, f)
-        print("download completed")
+        print("Book '" + self.name + "' download completed")
 
     def to_json(self):
+        '''Generate JSON of the book.
+
+        Returns:
+            str: The return JSON string
+        '''
         return json.dumps(self)
 
     def check_rules(self, rules):
-        check_rule = True
+        '''check the filter of book scores'''
+        passed = True
         A = int(self['score1'])
         B = int(self['score2'])
         C = int(self['score3'])
         D = int(self['score4'])
         E = int(self['score5'])
-        while check_rule:
+        while passed:
             for rule in rules:
-                check_rule = check_rule and eval(rule)
+                passed = passed and eval(rule)
             break
-        return check_rule
+        return passed
 
 
 class Shelf:
+    '''
+    A set of books with same categories or search result.
+    Books are stored in self.content.
+    '''
+
     def __init__(self, url='', name='', shelftype='category'):
         self.url = url
         self.name = name
@@ -107,7 +134,7 @@ class Shelf:
         time.sleep(3)
 
     def get_book_links(self):
-        # retrieve all book link from the category
+        # retrieve every book's link from the shelf
         try:
             r = requests.get(self.url)
         except Exception as err:
@@ -131,7 +158,7 @@ class Shelf:
     def get_book_num(self):
         return len(self.content)
 
-    def from_link_add_book(self, i):
+    def create_book_from_link(self, i):
         info = get_book_info(self.book_links[i])
         if not info:
             self.failed_page.append(self.book_links[i])
@@ -141,15 +168,11 @@ class Shelf:
             time.sleep(3)
 
     def add_all_book(self):
-        # add all books in the category book links to the shelf and delete link
-        jobs = ([gevent.spawn(self.from_link_add_book, i)
+        # create every book from links and add to the shelf then clear links
+        jobs = ([gevent.spawn(self.create_book_from_link, i)
                  for i in range(len(self.book_links))])
         gevent.joinall(jobs)
         self.book_links.clear()
-
-    def to_json(self):
-        return json.dumps(self, default=lambda o: o.__dict__,
-                          sort_keys=True, indent=4)
 
     def download_by_rule(self, book):
         if book.check_rules(myrule):
@@ -160,8 +183,13 @@ class Shelf:
                  for book in self.content.items()])
         gevent.joinall(jobs)
 
+    def to_json(self):
+        return json.dumps(self, default=lambda o: o.__dict__,
+                          sort_keys=True, indent=4)
+
 
 def search(text):
+    # Search by text and return a shelf
     search_url = 'http://www.zxcs8.com/index.php?keyword='
     search_text = convert_to_zhcn(text)
     search_page = search_url + search_text
@@ -175,7 +203,7 @@ def search(text):
 
 
 def get_book_info(page_url):
-    # retrieve the voting evaluation of the book, download page link and title
+    # retrieve the information of the book
     result = {}
     if 'zxcs' not in page_url:
         return result
@@ -186,12 +214,12 @@ def get_book_info(page_url):
     retry = 3
     while retry:
         try:
-            r = requests.get(page_url, timeout=5)
+            r = requests.get(page_url, timeout=10)
         except Exception as e:
             retry -= 1
             print(e, 'Exception occured. Retrying in 3 seconds.'
                   ' Retries left: %d' % retry)
-            if retry is not 0:
+            if retry != 0:
                 time.sleep(3)
             else:
                 print('No more retry!')
@@ -199,8 +227,8 @@ def get_book_info(page_url):
             continue
         break
     soup4 = BeautifulSoup(r.text)
-    content = soup4.find('div', id='content')
-    title = re.search('(.*?)作者：(.*)', content.h1.text)
+    id_content = soup4.find('div', id='content')
+    title = re.search('(.*?)作者：(.*)', id_content.h1.text)
     result['name'] = title.group(1)
     result['author'] = title.group(2)
     tag_p = soup4.find_all('p')
@@ -233,14 +261,17 @@ def create_category_shelf(category):
 
 
 def convert_to_zhtw(word):
+    # Convert string to traditional Chinese
     return zhconv.convert(word, 'zh-tw')
 
 
 def convert_to_zhcn(word):
+    # Convert string to simplified Chinese
     return zhconv.convert(word, 'zh-cn')
 
 
 def from_json(json_object):
+    # Read json object and convert to Book or Shelf
     if 'content' not in json_object and 'author' in json_object:
         return Book(json.loads(json_object))
     elif 'book_links' in json_object:
@@ -257,6 +288,8 @@ def from_json(json_object):
             print(book)
             temp_shelf.add_book(from_json(book))
         return temp_shelf
+    else:
+        return 'Unrecognizable JSON object!'
 
 
 monkey.patch_all()
@@ -304,7 +337,7 @@ s1 = Shelf()
 s1.add_book(b1)
 s1.add_book(b2)
 
-myrule = ['A>E', 'A+B>D+E', 'A/E>1.5']
+myrule = ['A>E', 'A+B>D+E', 'A-E>A/2']
 
 
 s2 = create_category_shelf(test3)
@@ -314,5 +347,4 @@ test6 = 'http://www.zxcs8.com/tag/%E5%8F%A6%E7%B1%BB%E5%B9%BB%E6%83%B3'
 test7 = 'http://www.zxcs8.com/index.php?keyword=异界'
 
 s3 = Shelf(test6, 'test6')
-s4 = Shelf(test7, 'test7', 'search')
-
+s4 = search('3')
