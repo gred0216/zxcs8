@@ -9,6 +9,7 @@ from collections import namedtuple
 import gevent
 from gevent import monkey
 from shutil import copyfileobj
+import logging
 
 
 class Book(dict):
@@ -43,11 +44,12 @@ class Book(dict):
         '''
         try:
             g = requests.get(self['dllink'])
-        except Exception as e:
-            return 'Unexpected Error', e
+        except Exception:
+            logging.exception("Cannot open download page: " + self['url'])
         else:
             if not g.ok:
-                return str(g.status_code) + 'error'
+                logging.error(str(g.status_code) + 'error: ' + self['url'])
+                return
             else:
                 dlsoup = BeautifulSoup(g.text)
                 spans = [x.a for x in dlsoup.find_all('span')]
@@ -59,14 +61,16 @@ class Book(dict):
             if dl.ok:
                 break
             elif i == filelinks[-1]:
-                return 'file unavailable'
+                logging.error('Unable to download: ' + self['name'])
+                return
 
+        # Create 'download' folder under current working directory
         if not os.path.isdir('./download/'):
             os.makedirs('./download/')
         with open('./download/' + self['name'] +
                   filename_extension, 'wb') as f:
             copyfileobj(dl.raw, f)
-        print("Book '" + self.name + "' download completed")
+        logging.info("Book '" + self['name'] + "' download completed")
 
     def to_json(self):
         '''Generate JSON of the book.
@@ -85,9 +89,13 @@ class Book(dict):
         D = int(self['score4'])
         E = int(self['score5'])
         while passed:
-            for rule in rules:
-                passed = passed and eval(rule)
-            break
+            try:
+                for rule in rules:
+                    passed = passed and eval(rule)
+                break
+            except Exception:
+                logging.exception("Can't apply filter!")
+                return False
         return passed
 
 
@@ -103,10 +111,10 @@ class Shelf:
         self.content = {}
         self.book_links = []
         self.failed_page = []
-        self.shelftype = shelftype
-        if url and self.shelftype == 'category':
+        self._shelftype = shelftype
+        if url and self._shelftype == 'category':
             self.pages = self.url + '/page/'
-        elif url and self.shelftype == 'search':
+        elif url and self._shelftype == 'search':
             self.pages = self.url + '&page='
         else:
             self.pages = ''
@@ -114,23 +122,32 @@ class Shelf:
     def add_book(self, book):
         if book['name'] not in self.content:
             self.content[book['name']] = book
+            logging.info("Book %s added to Shelf %s" %
+                         (book['name'], self.name))
 
     def delete_book(self, book):
         if book['name'] in self.content:
             del self.content[book['name']]
+            logging.info("Book %s deleted from Shelf %s" %
+                         (book['name'], self.name))
         else:
-            return book['name'] + ' is not in the shelf'
+            logging.info("Deletion failed: Book %s not in Shelf %s" %
+                         (book['name'], self.name))
+            print(book['name'] + ' is not in the shelf')
 
-    def get_book_link(self, page):
+    def _get_book_link(self, page):
         currect_page = self.pages + str(page)
         c = requests.get(currect_page)
         if not c.ok:
             self.failed_page.append(currect_page)
+            logging.error('Unable to get book links of %s: %d error' %
+                          (currect_page, c.status_code))
         else:
             soup2 = BeautifulSoup(c.text)
             all_dt = soup2.find_all('dt')
             for booklink in all_dt:
                 self.book_links.append(booklink.a.get('href'))
+            logging.debug('Successfully get book links from ' + currect_page)
         time.sleep(3)
 
     def get_book_links(self):
@@ -138,10 +155,11 @@ class Shelf:
         try:
             r = requests.get(self.url)
         except Exception as err:
-            return 'Unexpected Error', err
+            print('Unexpected Error', err)
+            logging.exception('Unable to get book links from %s' % self.url)
         else:
             if not r.ok:
-                return str(r.status_code) + ' error'
+                logging.error(str(r.status_code) + 'error: ' + self['url'])
             else:
                 soup = BeautifulSoup(r.text)
                 pages = soup.find(id='pagenavi')
@@ -151,37 +169,46 @@ class Shelf:
                     last_page_num = int(re.search('page.(\d+)', last_page)[1])
                 else:
                     last_page_num = 1
-                jobs = ([gevent.spawn(self.get_book_link, page)
+                jobs = ([gevent.spawn(self._get_book_link, page)
                          for page in range(1, last_page_num + 1)])
                 gevent.joinall(jobs)
+                logging.info("All book links of Shelf %s added" % self.name)
+                print("All book links added.")
 
     def get_book_num(self):
         return len(self.content)
 
-    def create_book_from_link(self, i):
+    def _create_book_from_link(self, i):
         info = get_book_info(self.book_links[i])
         if not info:
             self.failed_page.append(self.book_links[i])
+            logging.error("Unable to create book from %s" % self.book_links[i])
         else:
             tb = create_book(info)
             self.add_book(tb)
+            logging.info('Create book from %s' % self.book_links[i])
             time.sleep(3)
 
     def add_all_book(self):
         # create every book from links and add to the shelf then clear links
-        jobs = ([gevent.spawn(self.create_book_from_link, i)
+        jobs = ([gevent.spawn(self._create_book_from_link, i)
                  for i in range(len(self.book_links))])
         gevent.joinall(jobs)
         self.book_links.clear()
 
-    def download_by_rule(self, book):
+    def _download_by_rule(self, book):
         if book.check_rules(myrule):
             book.download()
+            logging.info("Book %s downloaded" % book['name'])
+        else:
+            logging.info("%s doesn't meet the rule" % book['name'])
 
     def download_all_by_rule(self):
-        jobs = ([gevent.spawn(self.download_by_rule, book[1])
+        jobs = ([gevent.spawn(self._download_by_rule, book[1])
                  for book in self.content.items()])
         gevent.joinall(jobs)
+        logging.info('Successfully downloaded all books from Shelf %s' %
+                     self.name)
 
     def to_json(self):
         return json.dumps(self, default=lambda o: o.__dict__,
@@ -194,18 +221,24 @@ def search(text):
     search_text = convert_to_zhcn(text)
     search_page = search_url + search_text
     name = '搜索 "%s" 的结果' % text
+
     s = requests.get(search_page)
     soup5 = BeautifulSoup(s.text)
     if soup5.find(class_='none'):
-        return 'Sorry, no results matching your criteria were found'
+        print('Sorry, no results matching your criteria were found!')
+        logging.warning("No search result of '%s'" % text)
+        return None
     else:
         return Shelf(search_page, name, 'search')
+        logging.info("Create Shelf of %s" % name)
 
 
 def get_book_info(page_url):
     # retrieve the information of the book
     result = {}
+
     if 'zxcs' not in page_url:
+        logging.error("Invalid book url:%s" % page_url)
         return result
     result['url'] = page_url
     book_score = ('http://www.zxcs8.com/content/plugins/'
@@ -223,14 +256,17 @@ def get_book_info(page_url):
                 time.sleep(3)
             else:
                 print('No more retry!')
+                logging.error('Unable to retrieve book info of ' + page_url)
                 return None
             continue
         break
+
     soup4 = BeautifulSoup(r.text)
     id_content = soup4.find('div', id='content')
     title = re.search('(.*?)作者：(.*)', id_content.h1.text)
     result['name'] = title.group(1)
     result['author'] = title.group(2)
+
     tag_p = soup4.find_all('p')
     for p in tag_p:
         temp_text = re.search('【TX', p.text)
@@ -249,6 +285,7 @@ def get_book_info(page_url):
     result['score4'] = scores[3]
     result['score5'] = scores[4]
 
+    logging.info("Successfully retrieved info of %s" % page_url)
     return result
 
 
@@ -284,6 +321,7 @@ def from_json(json_object):
         temp_shelf = Shelf(shelf_info.url, shelf_info.name)
         temp_shelf.book_links = shelf_info.book_links
         temp_shelf.failed_page = shelf_info.failed_page
+
         for book in books:
             print(book)
             temp_shelf.add_book(from_json(book))
@@ -293,58 +331,4 @@ def from_json(json_object):
 
 
 monkey.patch_all()
-
-test = 'http://www.zxcs8.com/sort/40'
-test2 = 'http://www.zxcs8.com/post/10927'
-test3 = ('http://www.zxcs8.com/sort/26', '奇幻·玄幻')
-test4 = 'http://www.zxcs8.com/post/10920'
-
-print()
-
-g1 = {'url': 'http://www.zxcs8.com/post/10927',
-      'name': '《重生之小玩家》（校对版全本）',
-      'author': '吹个大气球9',
-      'intro': ('世事如棋，有人身在局中当棋子，有人手握棋子做玩家。\n'
-                '大玩家摆弄苍生，小玩家自得富贵。\n'
-                '秦风活过一世再重来，睁开眼，便要从棋子变玩家。\n'
-                '然则大玩家不好当，姑且，就做个小玩家，富贵一生吧。'),
-      'score1': '118',
-      'score2': '7',
-      'score3': '9',
-      'score4': '9',
-      'score5': '127',
-      'dllink': 'http://www.zxcs8.com/download.php?id=10927'}
-g2 = {'url': 'http://www.zxcs8.com/post/10920',
-      'name': '《白银之轮》（校对版全本）',
-      'author': '悲剧山伯爵',
-      'intro': ('蝇王撒的奇妙作死之旅……\n一位顶级灾神的成长史)\n'
-                '这里有新派黑科技+古典主义魔法，灾神+宇宙人，'
-                '东洲妖怪+皇家菠萝，共济会喵星人+光照会汪星人，'
-                '甜党+咸党，触手魔女+地狱罪族，蒸汽飞艇+黑科技飞碟，'
-                '黑科技装甲+受孕指环，数百款不同风格的亡灵，近万种口味各异的蝇妖精供您选择。\n'
-                '锡兰是个充满安宁与祥和的美好世界，每天都有充满正能量的事情上演。\n'
-                '三观端正，积极向上……'),
-      'score1': '225',
-      'score2': '27',
-      'score3': '10',
-      'score4': '13',
-      'score5': '135',
-      'dllink': 'http://www.zxcs8.com/download.php?id=10920'}
-
-b1 = Book(g1)
-b2 = Book(g2)
-s1 = Shelf()
-s1.add_book(b1)
-s1.add_book(b2)
-
 myrule = ['A>E', 'A+B>D+E', 'A-E>A/2']
-
-
-s2 = create_category_shelf(test3)
-
-test5 = 'http://www.zxcs8.com/index.php?keyword=5'
-test6 = 'http://www.zxcs8.com/tag/%E5%8F%A6%E7%B1%BB%E5%B9%BB%E6%83%B3'
-test7 = 'http://www.zxcs8.com/index.php?keyword=异界'
-
-s3 = Shelf(test6, 'test6')
-s4 = search('3')
