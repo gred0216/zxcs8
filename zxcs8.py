@@ -12,6 +12,12 @@ from shutil import copyfileobj
 import logging
 
 
+logger = logging.getLogger(__name__)
+myrule = ['A>E', 'A+B>D+E', 'A-E>A/2']
+
+monkey.patch_all()
+
+
 class Book(dict):
     '''Book is a dictionary that stores information of book.'''
 
@@ -45,10 +51,10 @@ class Book(dict):
         try:
             g = requests.get(self['dllink'])
         except Exception:
-            logging.exception("Cannot open download page: " + self['url'])
+            logger.exception("Cannot open download page: " + self['url'])
         else:
             if not g.ok:
-                logging.error(str(g.status_code) + 'error: ' + self['url'])
+                logger.error(str(g.status_code) + 'error: ' + self['url'])
                 return
             else:
                 dlsoup = BeautifulSoup(g.text)
@@ -61,7 +67,7 @@ class Book(dict):
             if dl.ok:
                 break
             elif i == filelinks[-1]:
-                logging.error('Unable to download: ' + self['name'])
+                logger.error('Unable to download: ' + self['name'])
                 return
 
         # Create 'download' folder under current working directory
@@ -70,7 +76,7 @@ class Book(dict):
         with open('./download/' + self['name'] +
                   filename_extension, 'wb') as f:
             copyfileobj(dl.raw, f)
-        logging.info("Book '" + self['name'] + "' download completed")
+        logger.info("Book '" + self['name'] + "' download completed")
 
     def to_json(self):
         '''Generate JSON of the book.
@@ -94,7 +100,7 @@ class Book(dict):
                     passed = passed and eval(rule)
                 break
             except Exception:
-                logging.exception("Can't apply filter!")
+                logger.exception("Can't apply filter!")
                 return False
         return passed
 
@@ -122,17 +128,17 @@ class Shelf:
     def add_book(self, book):
         if book['name'] not in self.content:
             self.content[book['name']] = book
-            logging.info("Book %s added to Shelf %s" %
-                         (book['name'], self.name))
+            logger.info("Book %s added to Shelf %s" %
+                        (book['name'], self.name))
 
     def delete_book(self, book):
         if book['name'] in self.content:
             del self.content[book['name']]
-            logging.info("Book %s deleted from Shelf %s" %
-                         (book['name'], self.name))
+            logger.info("Book %s deleted from Shelf %s" %
+                        (book['name'], self.name))
         else:
-            logging.info("Deletion failed: Book %s not in Shelf %s" %
-                         (book['name'], self.name))
+            logger.info("Deletion failed: Book %s not in Shelf %s" %
+                        (book['name'], self.name))
             print(book['name'] + ' is not in the shelf')
 
     def _get_book_link(self, page):
@@ -140,14 +146,14 @@ class Shelf:
         c = requests.get(currect_page)
         if not c.ok:
             self.failed_page.append(currect_page)
-            logging.error('Unable to get book links of %s: %d error' %
-                          (currect_page, c.status_code))
+            logger.error('Unable to get book links of %s: %d error' %
+                         (currect_page, c.status_code))
         else:
             soup2 = BeautifulSoup(c.text)
             all_dt = soup2.find_all('dt')
             for booklink in all_dt:
                 self.book_links.append(booklink.a.get('href'))
-            logging.debug('Successfully get book links from ' + currect_page)
+            logger.info('Successfully get book links from ' + currect_page)
         time.sleep(3)
 
     def get_book_links(self):
@@ -156,10 +162,10 @@ class Shelf:
             r = requests.get(self.url)
         except Exception as err:
             print('Unexpected Error', err)
-            logging.exception('Unable to get book links from %s' % self.url)
+            logger.exception('Unable to get book links from %s' % self.url)
         else:
             if not r.ok:
-                logging.error(str(r.status_code) + 'error: ' + self['url'])
+                logger.error(str(r.status_code) + 'error: ' + self['url'])
             else:
                 soup = BeautifulSoup(r.text)
                 pages = soup.find(id='pagenavi')
@@ -172,7 +178,7 @@ class Shelf:
                 jobs = ([gevent.spawn(self._get_book_link, page)
                          for page in range(1, last_page_num + 1)])
                 gevent.joinall(jobs)
-                logging.info("All book links of Shelf %s added" % self.name)
+                logger.info("All book links of Shelf %s added" % self.name)
                 print("All book links added.")
 
     def get_book_num(self):
@@ -182,11 +188,11 @@ class Shelf:
         info = get_book_info(self.book_links[i])
         if not info:
             self.failed_page.append(self.book_links[i])
-            logging.error("Unable to create book from %s" % self.book_links[i])
+            logger.error("Unable to create book from %s" % self.book_links[i])
         else:
             tb = create_book(info)
             self.add_book(tb)
-            logging.info('Create book from %s' % self.book_links[i])
+            logger.info('Create book from %s' % self.book_links[i])
             time.sleep(3)
 
     def add_all_book(self):
@@ -199,16 +205,15 @@ class Shelf:
     def _download_by_rule(self, book):
         if book.check_rules(myrule):
             book.download()
-            logging.info("Book %s downloaded" % book['name'])
         else:
-            logging.info("%s doesn't meet the rule" % book['name'])
+            logger.info("%s doesnot meet the rule" % book['name'])
 
     def download_all_by_rule(self):
         jobs = ([gevent.spawn(self._download_by_rule, book[1])
                  for book in self.content.items()])
         gevent.joinall(jobs)
-        logging.info('Successfully downloaded all books from Shelf %s' %
-                     self.name)
+        logger.info('Successfully downloaded all books from Shelf %s' %
+                    self.name)
 
     def to_json(self):
         return json.dumps(self, default=lambda o: o.__dict__,
@@ -226,11 +231,11 @@ def search(text):
     soup5 = BeautifulSoup(s.text)
     if soup5.find(class_='none'):
         print('Sorry, no results matching your criteria were found!')
-        logging.warning("No search result of '%s'" % text)
+        logger.warning("No search result of '%s'" % text)
         return None
     else:
         return Shelf(search_page, name, 'search')
-        logging.info("Create Shelf of %s" % name)
+        logger.info("Create Shelf of %s" % name)
 
 
 def get_book_info(page_url):
@@ -238,7 +243,7 @@ def get_book_info(page_url):
     result = {}
 
     if 'zxcs' not in page_url:
-        logging.error("Invalid book url:%s" % page_url)
+        logger.error("Invalid book url:%s" % page_url)
         return result
     result['url'] = page_url
     book_score = ('http://www.zxcs8.com/content/plugins/'
@@ -256,7 +261,7 @@ def get_book_info(page_url):
                 time.sleep(3)
             else:
                 print('No more retry!')
-                logging.error('Unable to retrieve book info of ' + page_url)
+                logger.error('Unable to retrieve book info of ' + page_url)
                 return None
             continue
         break
@@ -285,7 +290,7 @@ def get_book_info(page_url):
     result['score4'] = scores[3]
     result['score5'] = scores[4]
 
-    logging.info("Successfully retrieved info of %s" % page_url)
+    logger.info("Successfully retrieved info of %s" % page_url)
     return result
 
 
@@ -330,5 +335,22 @@ def from_json(json_object):
         return 'Unrecognizable JSON object!'
 
 
-monkey.patch_all()
-myrule = ['A>E', 'A+B>D+E', 'A-E>A/2']
+def main():
+    logger.setLevel(logging.INFO)
+    logger.addHandler(logging.FileHandler('mylog.log', encoding='UTF-8'))
+    sh = logging.StreamHandler()
+    sh.setLevel(logging.INFO)
+    logger.addHandler(sh)
+    logger.info("start logging")
+    myrule = ['A>1']
+    test = 'http://www.zxcs8.com/tag/%E9%BB%91%E6%9A%97%E5%B9%BB%E6%83%B3'
+    s1 = Shelf(test, 'test')
+    s1.get_book_links()
+    s1.add_all_book()
+    s1.download_all_by_rule()
+
+    logger.info('stop logging')
+
+
+if __name__ == '__main__':
+    main()
