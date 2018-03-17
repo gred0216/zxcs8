@@ -9,7 +9,7 @@ This is a crawler of [知軒藏書](http://www.zxcs8.com/map.html).
 * Search books by words.
 * Save the shelf and book as json.
 * Use [gevent](http://www.gevent.org/) to work synchronously
+* Logging
 
 ## TODO
-* logging
 * manually set filter rules
