@@ -14,6 +14,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 myrule = ['A>E', 'A+B>D+E', 'A-E>A/2']
+headers = {'User-Agent': ('User-Agent:Mozilla/5.0 (Macintosh;'
+                          ' Intel Mac OS X 10_12_3)'
+                          ' AppleWebKit/537.36 (KHTML, like Gecko)'
+                          ' Chrome/56.0.2924.87 Safari/537.36')}
+
 
 monkey.patch_all()
 
@@ -49,7 +54,7 @@ class Book(dict):
 
         '''
         try:
-            g = requests.get(self['dllink'])
+            g = requests.get(self['dllink'], headers=headers)
         except Exception:
             logger.exception("Cannot open download page: " + self['url'])
         else:
@@ -62,7 +67,7 @@ class Book(dict):
                 filelinks = [y.get('href') for y in spans if y]
 
         for i in filelinks:
-            dl = requests.get(i, stream=True)
+            dl = requests.get(i, stream=True, headers=headers)
             filename_extension = re.search('\d/.*?(\..*)', i)[1]
             if dl.ok:
                 break
@@ -143,7 +148,7 @@ class Shelf:
 
     def _get_book_link(self, page):
         currect_page = self.pages + str(page)
-        c = requests.get(currect_page)
+        c = requests.get(currect_page, headers=headers)
         if not c.ok:
             self.failed_page.append(currect_page)
             logger.error('Unable to get book links of %s: %d error' %
@@ -159,9 +164,8 @@ class Shelf:
     def get_book_links(self):
         # retrieve every book's link from the shelf
         try:
-            r = requests.get(self.url)
+            r = requests.get(self.url, headers=headers)
         except Exception as err:
-            print('Unexpected Error', err)
             logger.exception('Unable to get book links from %s' % self.url)
         else:
             if not r.ok:
@@ -179,7 +183,6 @@ class Shelf:
                          for page in range(1, last_page_num + 1)])
                 gevent.joinall(jobs)
                 logger.info("All book links of Shelf %s added" % self.name)
-                print("All book links added.")
 
     def get_book_num(self):
         return len(self.content)
@@ -193,7 +196,7 @@ class Shelf:
             tb = create_book(info)
             self.add_book(tb)
             logger.info('Create book from %s' % self.book_links[i])
-            time.sleep(3)
+            gevent.sleep(3)
 
     def add_all_book(self):
         # create every book from links and add to the shelf then clear links
@@ -227,7 +230,7 @@ def search(text):
     search_page = search_url + search_text
     name = '搜索 "%s" 的结果' % text
 
-    s = requests.get(search_page)
+    s = requests.get(search_page, headers=headers)
     soup5 = BeautifulSoup(s.text)
     if soup5.find(class_='none'):
         print('Sorry, no results matching your criteria were found!')
@@ -249,14 +252,14 @@ def get_book_info(page_url):
     book_score = ('http://www.zxcs8.com/content/plugins/'
                   'cgz_xinqing/cgz_xinqing_action.php?action=show&id=')
     book_id = re.search('post/(\d*)', page_url).groups()[0]
-    retry = 3
+    retry = 5
     while retry:
         try:
-            r = requests.get(page_url, timeout=10)
+            r = requests.get(page_url, timeout=30, headers=headers)
         except Exception as e:
             retry -= 1
-            print(e, 'Exception occured. Retrying in 3 seconds.'
-                  ' Retries left: %d' % retry)
+            logger.exception('Exception occured. Retrying in 3 seconds.'
+                             ' Retries left: %d' % retry)
             if retry != 0:
                 time.sleep(3)
             else:
@@ -282,7 +285,7 @@ def get_book_info(page_url):
     result['size'], result['intro'] = res.group(1), res.group(2)
     result['dllink'] = soup4.find(class_='down_2').a.get('href')
 
-    scores = requests.get(book_score + book_id).text
+    scores = requests.get(book_score + book_id, headers=headers).text
     scores = scores.split(',')
     result['score1'] = scores[0]
     result['score2'] = scores[1]

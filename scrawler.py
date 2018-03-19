@@ -5,6 +5,27 @@ import logging
 def main():
     logger = set_log()
     logger.info('scrawler start')
+    tags, sort = get_category()
+
+    os.makedirs('./tags/', exist_ok=True)
+    for name, link in tags.items():
+        temp_shelf = Shelf(link, name)
+        temp_shelf.get_book_links()
+        temp_shelf.add_all_book()
+        shelf_json = temp_shelf.to_json()
+
+        with open('./tags/%s.txt' % name, 'w', encoding='UTF-8') as f:
+            f.write(shelf_json)
+
+    os.makedirs('./sort/', exist_ok=True)
+    for name, link in sort.items():
+        temp_shelf = Shelf(link, name)
+        temp_shelf.get_book_links()
+        temp_shelf.add_all_book()
+        shelf_json = temp_shelf.to_json()
+
+        with open('./sort/%s.txt' % name, 'w', encoding='UTF-8') as f:
+            f.write(shelf_json)
 
     logger.info('scrawler stop')
 
@@ -25,6 +46,30 @@ def set_log():
     logger.addHandler(fh)
     logger.addHandler(sh)
     return logger
+
+
+def get_category():
+    r = requests.get('http://www.zxcs8.com/map.html')
+    r.encoding = 'UTF-8'
+    if r.ok:
+        soup = BeautifulSoup(r.text)
+    tag_a = soup.find(id='tags').find_all('a')
+    tags = {}
+    for i in tag_a:
+        text = re.match('(.*)\(', i.text)[1]
+        href = i.get('href')
+        tags[text] = href
+
+    sort_a = soup.find(id='sort').find_all('a')
+    sort = {}
+    for i in sort_a:
+        if i.img:
+            continue
+        text = re.match('(.*)\(', i.text)[1]
+        href = i.get('href')
+        sort[text] = href
+
+    return tags, sort
 
 
 if __name__ == '__main__':
