@@ -31,13 +31,14 @@ def main():
 
 
 def set_log():
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger('zxcs8')
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s %(levelname)-8s: %(message)s')
 
     # filehandler write to scrawler.log under current working directory
     fh = logging.FileHandler('scrawler.log', encoding='UTF-8')
     fh.setFormatter(formatter)
+    fh.setLevel(logging.INFO)
 
     # streamhandler only print out log warning or above
     sh = logging.StreamHandler()
@@ -73,4 +74,17 @@ def get_category():
 
 
 if __name__ == '__main__':
+    '''
+    logger = set_log()
+    logger.info('logger start')
+    test = 'http://www.zxcs8.com/sort/38'
+    s1 = Shelf(test, 'test2')
+    s1.get_book_links()
+    s1.add_all_book()
+
+    with open('./test2.txt', 'w', encoding='UTF-8') as f:
+        f.write(s1.to_json())
+
+    logger.info('logger stop')
+    '''
     main()
