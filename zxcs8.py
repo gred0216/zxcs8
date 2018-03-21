@@ -54,18 +54,49 @@ class Book(dict):
             return if exception occured.
 
         '''
-        try:
-            g = requests.get(self['dllink'], headers=headers)
-        except Exception:
-            logger.exception("Cannot open download page: " + self['url'])
+        check_sleep_time()
+        retry = 5
+
+        while retry:
+            try:
+                g = requests.get(self['dllink'], headers=headers, timeout=30)
+            except requests.exceptions.ConnectionError:
+                retry -= 1
+                if retry != 0:
+                    logger.error(('ConnectionError on %s. '
+                                  'Retrying in 1 minute. '
+                                  'Retries left: %d'
+                                  % (self['dllink'], retry)))
+                    time.sleep(3)
+                else:
+                    logger.error(('Unable to open download links from %s'
+                                  ': ConnectTimeout' % self['dllink']))
+                    return None
+                continue
+            except requests.exceptions.ConnectTimeout:
+                retry -= 1
+                if retry != 0:
+                    logger.error(('ConnectTimeout on %s. '
+                                  'Retrying in 3 seconds. '
+                                  'Retries left: %d'
+                                  % (self['dllink'], retry)))
+                    time.sleep(3)
+                else:
+                    logger.error(('Unable to open download link from %s'
+                                  ': ConnectTimeout' % self['dllink']))
+                    return None
+                continue
+            break
+
+        reset_last_retrieve()
+
+        if not g.ok:
+            logger.error(str(g.status_code) + 'error: ' + self['dllink'])
+            return
         else:
-            if not g.ok:
-                logger.error(str(g.status_code) + 'error: ' + self['url'])
-                return
-            else:
-                dlsoup = BeautifulSoup(g.text)
-                spans = [x.a for x in dlsoup.find_all('span')]
-                filelinks = [y.get('href') for y in spans if y]
+            dlsoup = BeautifulSoup(g.text)
+            spans = [x.a for x in dlsoup.find_all('span')]
+            filelinks = [y.get('href') for y in spans if y]
 
         for i in filelinks:
             dl = requests.get(i, stream=True, headers=headers)
@@ -151,22 +182,31 @@ class Shelf:
     def _get_book_link(self, page):
         currect_page = self.pages + str(page)
         check_sleep_time()
-        retry = 3
+        retry = 5
 
         while retry:
             try:
                 c = requests.get(currect_page, headers=headers)
             except requests.exceptions.ConnectionError:
-                logger.exception(('ConnectionError on %s. '
-                                  'Retrying in 1 minute. Retries left: %d'
-                                  % (currect_page, retry)))
-                time.sleep(60)
                 retry -= 1
+                if retry != 0:
+                    logger.error(('ConnectionError on %s. '
+                                  'Retrying in 1 minute. '
+                                  'Retries left: %d'
+                                  % (currect_page, retry)))
+                    time.sleep(3)
+                else:
+                    logger.error(('Unable to get book links from %s'
+                                  ': ConnectTimeout' % currect_page))
+                    return None
+                continue
             except requests.exceptions.ConnectTimeout:
                 retry -= 1
-                logger.exception('ConnectTimeout on %s. Retrying in 3 seconds.'
-                                 ' Retries left: %d' % (currect_page, retry))
                 if retry != 0:
+                    logger.error(('ConnectTimeout on %s. '
+                                  'Retrying in 3 seconds. '
+                                  'Retries left: %d'
+                                  % (currect_page, retry)))
                     time.sleep(3)
                 else:
                     logger.error(('Unable to get book links from %s'
@@ -175,22 +215,23 @@ class Shelf:
                 continue
             break
 
+        reset_last_retrieve()
+
         if not c.ok:
             self.failed_page.append(currect_page)
             logger.error('Unable to get book links of %s: %d error' %
                          (currect_page, c.status_code))
         else:
-            global last_retrieve
-            last_retrieve = time.time()
             soup2 = BeautifulSoup(c.text)
             all_dt = soup2.find_all('dt')
             for booklink in all_dt:
                 self.book_links.append(booklink.a.get('href'))
             logger.info('Successfully get book links from ' + currect_page)
+            gevent.sleep(1)
 
     def get_book_links(self):
         # retrieve all book links from the shelf
-        retry = 3
+        retry = 5
         check_sleep_time()
         while retry:
             try:
@@ -198,9 +239,9 @@ class Shelf:
             except requests.exceptions.ConnectionError:
                 retry -= 1
                 if retry != 0:
-                    logger.exception(('ConnectionError on %s. '
-                                      'Retrying in 1 minute. Retries left: %d'
-                                      % (self.url, retry)))
+                    logger.error(('ConnectionError on %s. '
+                                  'Retrying in 1 minute. Retries left: %d'
+                                  % (self.url, retry)))
                     time.sleep(60)
                     continue
                 else:
@@ -210,9 +251,9 @@ class Shelf:
             except requests.exceptions.ConnectTimeout:
                 retry -= 1
                 if retry != 0:
-                    logger.exception(('ConnectTimeout on %s. '
-                                      'Retrying in 3 seconds. '
-                                      'Retries left: %d' % (self.url, retry)))
+                    logger.error(('ConnectTimeout on %s. '
+                                  'Retrying in 3 seconds. '
+                                  'Retries left: %d' % (self.url, retry)))
                     time.sleep(3)
                     continue
                 else:
@@ -221,8 +262,7 @@ class Shelf:
                     return None
             break
 
-        global last_retrieve
-        last_retrieve = time.time()
+        reset_last_retrieve()
 
         if not r.ok:
             logger.error(str(r.status_code) + 'error: ' + self['url'])
@@ -236,11 +276,12 @@ class Shelf:
                                               last_page)[1])
             else:
                 last_page_num = 1
-            jobs = ([gevent.spawn(self._get_book_link, page)
-                     for page in range(1, last_page_num + 1)])
-            for i in range(0, len(jobs), 5):
-                gevent.joinall(jobs[i:i + 5])
-                gevent.sleep(3)
+            for i in range(0, last_page_num + 1, 5):
+                check_sleep_time()
+                jobs = ([gevent.spawn(self._get_book_link, page)
+                         for page in range(i, i + 5)])
+                gevent.joinall(jobs)
+                reset_last_retrieve()
                 time.sleep(5)
             logger.info("All %d book links of Shelf %s added" %
                         (len(self.book_links), self.name))
@@ -256,17 +297,20 @@ class Shelf:
         else:
             tb = create_book(info)
             logger.info('Book %s created from %s' %
-                        (self.book_links[i], tb['name']))
+                        (tb['name'], self.book_links[i]))
             self.add_book(tb)
+            time.sleep(3)
             gevent.sleep(3)
 
     def add_all_book(self):
         # create every book from links and add to the shelf then clear links
-        jobs = ([gevent.spawn(self._create_book_from_link, i)
-                 for i in range(len(self.book_links))])
-        for i in range(0, len(jobs), 5):
-            time.sleep(3)
-            gevent.joinall(jobs[i:i + 5])
+
+        for i in range(0, len(self.book_links), 5):
+            check_sleep_time()
+            jobs = ([gevent.spawn(self._create_book_from_link, j)
+                     for j in range(i)])
+            gevent.joinall(jobs)
+            reset_last_retrieve()
         logger.info('All %d books added to Shelf %s' %
                     (len(self.content), self.name))
         self.book_links.clear()
@@ -298,10 +342,38 @@ def search(text):
     name = '搜索 "%s" 的结果' % text
 
     check_sleep_time()
-    try:
-        s = requests.get(search_page, headers=headers)
-    except Exception as e:
-        raise e
+    retry = 5
+
+    while retry:
+        try:
+            s = requests.get(search_page, timeout=30, headers=headers)
+        except requests.exceptions.ConnectionError:
+            retry -= 1
+            if retry != 0:
+                logger.error(('ConnectionError on %s. '
+                              'Retrying in 1 minute. Retries left: %d'
+                              % (search_page, retry)))
+                time.sleep(60)
+                continue
+            else:
+                logger.error(('Unable to get search result from %s'
+                              ': ConnectionError' % search_page))
+                return None
+        except requests.exceptions.ConnectTimeout:
+            retry -= 1
+            if retry != 0:
+                logger.error(('ConnectTimeout on %s. '
+                              'Retrying in 3 seconds. '
+                              'Retries left: %d' % (search_page, retry)))
+                time.sleep(3)
+                continue
+            else:
+                logger.error(('Unable to get search result from %s'
+                              ': ConnectTimeout' % search_page))
+                return None
+        break
+
+    reset_last_retrieve()
 
     soup5 = BeautifulSoup(s.text)
     if soup5.find(class_='none'):
@@ -321,9 +393,9 @@ def get_book_info(page_url):
         logger.error("Invalid book url:%s" % page_url)
         return result
     result['url'] = page_url
-    book_score = ('http://www.zxcs8.com/content/plugins/'
-                  'cgz_xinqing/cgz_xinqing_action.php?action=show&id=')
-    book_id = re.search('post/(\d*)', page_url).groups()[0]
+    book_score = (('http://www.zxcs8.com/content/plugins/'
+                   'cgz_xinqing/cgz_xinqing_action.php?action=show&id=') +
+                  re.search('post/(\d*)', page_url).groups()[0])
     retry = 5
     check_sleep_time()
 
@@ -331,25 +403,32 @@ def get_book_info(page_url):
         try:
             r = requests.get(page_url, timeout=30, headers=headers)
         except requests.exceptions.ConnectionError:
-            logger.exception(('ConnectionError on %s. '
+            retry -= 1
+            if retry != 0:
+                logger.error(('ConnectionError on %s. '
                               'Retrying in 1 minute. Retries left: %d'
                               % (page_url, retry)))
-            time.sleep(60)
-            retry -= 1
+                time.sleep(60)
+                continue
+            else:
+                logger.error(('Unable to get book info from %s'
+                              ': ConnectionError' % page_url))
+                return None
         except requests.exceptions.ConnectTimeout:
             retry -= 1
-            logger.exception('ConnectTimeout on %s. Retrying in 3 seconds.'
-                             ' Retries left: %d' % (page_url, retry))
             if retry != 0:
+                logger.error(('ConnectTimeout on %s. '
+                              'Retrying in 3 seconds. '
+                              'Retries left: %d' % (page_url, retry)))
                 time.sleep(3)
+                continue
             else:
-                logger.error(('Unable to retrieve book info of %s'
+                logger.error(('Unable to get book info from %s'
                               ': ConnectTimeout' % page_url))
-                return None
-            continue
+            break
         break
-    global last_retrieve
-    last_retrieve = time.time()
+
+    reset_last_retrieve()
 
     soup4 = BeautifulSoup(r.text)
     id_content = soup4.find('div', id='content')
@@ -368,7 +447,40 @@ def get_book_info(page_url):
     result['dllink'] = soup4.find(class_='down_2').a.get('href')
 
     check_sleep_time()
-    scores = requests.get(book_score + book_id, headers=headers).text
+
+    retry = 5
+
+    while retry:
+        try:
+            scores = requests.get(book_score, headers=headers, timeout=30).text
+        except requests.exceptions.ConnectionError:
+            retry -= 1
+            if retry != 0:
+                logger.error(('ConnectionError on %s. '
+                              'Retrying in 1 minute. Retries left: %d'
+                              % (book_score, retry)))
+                time.sleep(60)
+                continue
+            else:
+                logger.error(('Unable to get book score from %s'
+                              ': ConnectionError' % book_score))
+                return None
+        except requests.exceptions.ConnectTimeout:
+            retry -= 1
+            if retry != 0:
+                logger.error(('ConnectTimeout on %s. '
+                              'Retrying in 3 seconds. '
+                              'Retries left: %d' % (book_score, retry)))
+                time.sleep(3)
+                continue
+            else:
+                logger.error(('Unable to get book score from %s'
+                              ': ConnectTimeout' % book_score))
+                return None
+        break
+
+    reset_last_retrieve()
+
     scores = scores.split(',')
     result['score1'] = scores[0]
     result['score2'] = scores[1]
@@ -376,16 +488,20 @@ def get_book_info(page_url):
     result['score4'] = scores[3]
     result['score5'] = scores[4]
 
-    last_retrieve = time.time()
-
     logger.info("Successfully retrieved info of %s" % page_url)
+    time.sleep(3)
     return result
 
 
 def check_sleep_time():
     global last_retrieve
-    if time.time() - last_retrieve < 2:
-        time.sleep(2)
+    if time.time() - last_retrieve < 3:
+        time.sleep(3)
+
+
+def reset_last_retrieve():
+    global last_retrieve
+    last_retrieve = time.time()
 
 
 def create_book(info):
