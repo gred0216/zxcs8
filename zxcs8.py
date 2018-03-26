@@ -15,10 +15,10 @@ import logging
 logger = logging.getLogger('zxcs8')
 myrule = ['A>E', 'A+B>D+E', 'A-E>A/2']
 last_retrieve = time.time()
-headers = {'User-Agent': ('User-Agent:Mozilla/5.0 (Macintosh;'
-                          ' Intel Mac OS X 10_12_3)'
-                          ' AppleWebKit/537.36 (KHTML, like Gecko)'
-                          ' Chrome/56.0.2924.87 Safari/537.36')}
+headers = {'User-Agent': ('User-Agent:Mozilla/5.0 (Macintosh; '
+                          'Intel Mac OS X 10_12_3) '
+                          'AppleWebKit/537.36 (KHTML, like Gecko) '
+                          'Chrome/56.0.2924.87 Safari/537.36')}
 
 
 monkey.patch_all()
@@ -154,11 +154,11 @@ class Shelf:
         self.content = {}
         self.book_links = []
         self.failed_page = []
-        self._shelftype = shelftype
+        self.shelftype = shelftype
         self.download_count = 0
-        if url and self._shelftype == 'category':
+        if url and self.shelftype == 'category':
             self.pages = self.url + '/page/'
-        elif url and self._shelftype == 'search':
+        elif url and self.shelftype == 'search':
             self.pages = self.url + '&page='
         else:
             self.pages = ''
@@ -224,12 +224,18 @@ class Shelf:
         else:
             soup2 = BeautifulSoup(c.text)
             all_dt = soup2.find_all('dt')
+            links = []
             for booklink in all_dt:
-                self.book_links.append(booklink.a.get('href'))
+                links.append(booklink.a.get('href'))
+            link_num = len(links)
+            for i in range(0, link_num, 5):
+                jobs = [gevent.spawn(self._create_book_from_link, links[j])
+                        for j in range(i, min(i + 5, link_num))]
+                gevent.joinall(jobs)
             logger.info('Successfully get book links from ' + currect_page)
-            gevent.sleep(1)
+            time.sleep(1)
 
-    def get_book_links(self):
+    def get_books(self):
         # retrieve all book links from the shelf
         retry = 5
         check_sleep_time()
@@ -276,44 +282,26 @@ class Shelf:
                                               last_page)[1])
             else:
                 last_page_num = 1
-            for i in range(0, last_page_num + 1, 5):
+            for i in range(last_page_num):
                 check_sleep_time()
-                jobs = ([gevent.spawn(self._get_book_link, page)
-                         for page in range(i, i + 5)])
-                gevent.joinall(jobs)
+                self._get_book_link(i)
                 reset_last_retrieve()
-                time.sleep(5)
             logger.info("All %d book links of Shelf %s added" %
                         (len(self.book_links), self.name))
 
     def get_book_num(self):
         return len(self.content)
 
-    def _create_book_from_link(self, i):
-        info = get_book_info(self.book_links[i])
+    def _create_book_from_link(self, link):
+        info = get_book_info(link)
         if not info:
-            self.failed_page.append(self.book_links[i])
-            logger.error("Unable to create book from %s" % self.book_links[i])
+            self.failed_page.append(link)
+            logger.error("Unable to create book from %s" % link)
         else:
             tb = create_book(info)
             logger.info('Book %s created from %s' %
-                        (tb['name'], self.book_links[i]))
+                        (tb['name'], link))
             self.add_book(tb)
-            time.sleep(3)
-            gevent.sleep(3)
-
-    def add_all_book(self):
-        # create every book from links and add to the shelf then clear links
-
-        for i in range(0, len(self.book_links), 5):
-            check_sleep_time()
-            jobs = ([gevent.spawn(self._create_book_from_link, j)
-                     for j in range(i)])
-            gevent.joinall(jobs)
-            reset_last_retrieve()
-        logger.info('All %d books added to Shelf %s' %
-                    (len(self.content), self.name))
-        self.book_links.clear()
 
     def _download_by_rule(self, book):
         if book.check_rules(myrule):
@@ -432,7 +420,12 @@ def get_book_info(page_url):
 
     soup4 = BeautifulSoup(r.text)
     id_content = soup4.find('div', id='content')
-    title = re.search('(.*?)作者：(.*)', id_content.h1.text)
+    try:
+        title = re.search('(.*?)作者：(.*)', id_content.h1.text)
+    except Exception as e:
+        logger.error('Unable to retrive book info of %d' % page_url)
+        return
+
     result['name'] = title.group(1)
     result['author'] = title.group(2)
 
@@ -442,11 +435,21 @@ def get_book_info(page_url):
         if temp_text:
             temp_text = temp_text.string.replace('\u3000', '')
             break
-    res = re.search('【TXT大小】：(.*?)【内容简介】：(.*)', temp_text, flags=re.S)
-    result['size'], result['intro'] = res.group(1), res.group(2)
-    result['dllink'] = soup4.find(class_='down_2').a.get('href')
+    try:
+        res = re.search('【TXT大小】：(.*?)【内容简介】：(.*)', temp_text, flags=re.S)
+        result['size'], result['intro'] = res.group(1), res.group(2)
+    except Exception as e:
+        logger.warning('Unable to get intro of %s' % page_url)
+        result['size'], result['intro'] = '', temp_text
+
+    try:
+        result['dllink'] = soup4.find(class_='down_2').a.get('href')
+    except AttributeError:
+        logger.warning('Unable to get download link')
+        results['dllink'] = ''
 
     check_sleep_time()
+    logger.info("Successfully retrieved info of %s" % page_url)
 
     retry = 5
 
@@ -488,8 +491,8 @@ def get_book_info(page_url):
     result['score4'] = scores[3]
     result['score5'] = scores[4]
 
-    logger.info("Successfully retrieved info of %s" % page_url)
-    time.sleep(3)
+    logger.info("Successfully retrieved score of %s" % page_url)
+
     return result
 
 
@@ -534,26 +537,47 @@ def from_json(json_object):
         temp_shelf.failed_page = shelf_info.failed_page
 
         for book in books:
-            print(book)
             temp_shelf.add_book(from_json(book))
         return temp_shelf
     else:
         return 'Unrecognizable JSON object!'
 
 
-def main():
+def set_log():
+    logger = logging.getLogger('zxcs8')
     logger.setLevel(logging.INFO)
-    logger.addHandler(logging.FileHandler('mylog.log', encoding='UTF-8'))
+    formatter = logging.Formatter('%(asctime)s %(levelname)-8s: %(message)s')
+
+    # filehandler write to scrawler.log under current working directory
+    fh = logging.FileHandler('scrawler.log', encoding='UTF-8')
+    fh.setFormatter(formatter)
+    fh.setLevel(logging.INFO)
+
+    # streamhandler only print out log warning or above
     sh = logging.StreamHandler()
-    sh.setLevel(logging.INFO)
+    sh.setFormatter(formatter)
+    sh.setLevel(logging.WARNING)
+    logger.addHandler(fh)
     logger.addHandler(sh)
-    logger.info("start logging")
-    myrule = ['A>1']
-    test = 'http://www.zxcs8.com/tag/%E9%BB%91%E6%9A%97%E5%B9%BB%E6%83%B3'
+    return logger
+
+
+def logtest():
+    logger.debug('debug test')
+    logger.info('info test')
+    logger.warning('warning test')
+    logger.error('error test')
+    logger.critical('critical test')
+
+
+def main():
+    logger = set_log()
+    logger.info('start logging')
+    test = 'http://www.zxcs8.com/tag/%E5%89%91%E4%B8%8E%E9%AD%94%E6%B3%95'
     s1 = Shelf(test, 'test')
     s1.get_book_links()
-    s1.add_all_book()
-
+    with open('%s.txt' % s1.name, 'w', encoding='UTF-8') as f:
+        f.write(s1.to_json())
 
     logger.info('stop logging')
 

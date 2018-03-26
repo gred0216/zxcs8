@@ -10,8 +10,8 @@ def main():
     os.makedirs('./tags/', exist_ok=True)
     for name, link in tags.items():
         temp_shelf = Shelf(link, name)
-        temp_shelf.get_book_links()
-        temp_shelf.add_all_book()
+        temp_shelf.get_books()
+
         shelf_json = temp_shelf.to_json()
 
         with open('./tags/%s.txt' % name, 'w', encoding='UTF-8') as f:
@@ -20,15 +20,15 @@ def main():
     os.makedirs('./sort/', exist_ok=True)
     for name, link in sort.items():
         temp_shelf = Shelf(link, name)
-        temp_shelf.get_book_links()
-        temp_shelf.add_all_book()
+        temp_shelf.get_books()
+
         shelf_json = temp_shelf.to_json()
 
         with open('./sort/%s.txt' % name, 'w', encoding='UTF-8') as f:
             f.write(shelf_json)
 
     logger.info('scrawler stop')
-    logger.shutdown()
+    logging.shutdown()
 
 
 def set_log():
@@ -75,16 +75,22 @@ def get_category():
 
 
 if __name__ == '__main__':
-
+    '''
     logger = set_log()
     logger.info('logger start')
-    test = 'http://www.zxcs8.com/sort/38'
-    s1 = Shelf(test, 'test2')
+
+    test = 'http://www.zxcs8.com/tag/%E5%89%91%E4%B8%8E%E9%AD%94%E6%B3%95'
+    s1 = Shelf(test, 't3')
     s1.get_book_links()
-    s1.add_all_book()
 
     with open('./test2.txt', 'w', encoding='UTF-8') as f:
         f.write(s1.to_json())
 
+    logtest()
+
+    logger.warning('warning test')
+    logger.error('error test')
     logger.info('logger stop')
-    logger.shutdown()
+    logging.shutdown()
+    '''
+    main()
