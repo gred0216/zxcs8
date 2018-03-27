@@ -526,7 +526,7 @@ def from_json(json_object):
     if 'content' not in json_object and 'author' in json_object:
         return Book(json.loads(json_object))
     elif 'book_links' in json_object:
-        pat = '(.*?)("content": {)(.*?)("failed_page".*)'
+        pat = '(.*?)("content": {)(.*?)("download_count".*)'
         re_result = re.findall(pat, json_object, flags=re.S)[0]
         no_content = re_result[0] + re_result[3]
         books = re.findall('{.*?}', re_result[2], flags=re.S)
