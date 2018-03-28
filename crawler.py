@@ -1,5 +1,6 @@
 from zxcs8 import *
 import logging
+from sorter import *
 
 
 def main():
@@ -9,8 +10,12 @@ def main():
 
     os.makedirs('./tags/', exist_ok=True)
     for name, link in tags.items():
+        path = 'tags/'
         temp_shelf = Shelf(link, name)
         temp_shelf.get_books()
+        sort_by_bad(temp_shelf, path)
+        sort_by_excellent(temp_shelf, path)
+        sort_by_ratio(temp_shelf, path)
 
         shelf_json = temp_shelf.to_json()
 
@@ -19,8 +24,12 @@ def main():
 
     os.makedirs('./sort/', exist_ok=True)
     for name, link in sort.items():
+        path = 'sort/'
         temp_shelf = Shelf(link, name)
         temp_shelf.get_books()
+        sort_by_bad(temp_shelf, path)
+        sort_by_excellent(temp_shelf, path)
+        sort_by_ratio(temp_shelf, path)
 
         shelf_json = temp_shelf.to_json()
 
@@ -75,22 +84,4 @@ def get_category():
 
 
 if __name__ == '__main__':
-    '''
-    logger = set_log()
-    logger.info('logger start')
-
-    test = 'http://www.zxcs8.com/tag/%E5%89%91%E4%B8%8E%E9%AD%94%E6%B3%95'
-    s1 = Shelf(test, 't3')
-    s1.get_book_links()
-
-    with open('./test2.txt', 'w', encoding='UTF-8') as f:
-        f.write(s1.to_json())
-
-    logtest()
-
-    logger.warning('warning test')
-    logger.error('error test')
-    logger.info('logger stop')
-    logging.shutdown()
-    '''
     main()

@@ -65,13 +65,36 @@ def sort_by_ratio(shelf, path):
                      (int(shelf.content[book]['score4']) +
                       int(shelf.content[book]['score5'])))
         except ZeroDivisionError:
-            score = 100
+            score = -1
         ratio.append((book, round(score, 3)))
     sort_score(ratio)
 
     with open('./score/ratio/{}{}_ratio.txt'.format(path, shelf.name),
               'w', encoding='UTF-8') as f:
         f.write('\n'.join('{}:{}'.format(tup[0], tup[1]) for tup in ratio))
+
+
+def sort_by_votes(shelf, path):
+    if 'tags' in path:
+        if not os.path.isdir('./score/votes/tags'):
+            os.makedirs('./score/votes/tags', exist_ok=True)
+    elif 'sort' in path:
+        if not os.path.isdir('./score/votes/sort'):
+            os.makedirs('./score/votes/sort', exist_ok=True)
+
+    votes = []
+    for book in shelf.content:
+        vote = (int(shelf.content[book]['score1']) +
+                int(shelf.content[book]['score2']) +
+                int(shelf.content[book]['score3']) +
+                int(shelf.content[book]['score4']) +
+                int(shelf.content[book]['score5']))
+        votes.append((book, vote))
+    sort_score(votes)
+
+    with open('./score/votes/{}{}_votes.txt'.format(path, shelf.name),
+              'w', encoding='UTF-8') as f:
+        f.write('\n'.join('{}:{}'.format(tup[0], tup[1]) for tup in votes))
 
 
 if __name__ == '__main__':
@@ -83,6 +106,7 @@ if __name__ == '__main__':
         sort_by_excellent(shelf, path)
         sort_by_ratio(shelf, path)
         sort_by_bad(shelf, path)
+        sort_by_votes(shelf, path)
 
     for txt in all_sort:
         path = 'sort/'
@@ -92,3 +116,4 @@ if __name__ == '__main__':
         sort_by_excellent(shelf, path)
         sort_by_ratio(shelf, path)
         sort_by_bad(shelf, path)
+        sort_by_votes(shelf, path)
