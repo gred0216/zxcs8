@@ -19,7 +19,7 @@ This is a crawler of [知軒藏書](http://www.zxcs8.com/map.html).
 
 * Ratio: sorted by number of excellent and good votes divided by poor and bad votes((仙草+糧草)/(枯草+毒草))
 
-If poor and bad votes are zero, the ratio is 100.
+If poor and bad votes are zero, the ratio is -1.
 
 ## TODO
 * manually set filter rules
