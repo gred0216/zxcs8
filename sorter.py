@@ -97,23 +97,44 @@ def sort_by_votes(shelf, path):
         f.write('\n'.join('{}:{}'.format(tup[0], tup[1]) for tup in votes))
 
 
+def sort_by_overall(shelf, path):
+    if 'tags' in path:
+        if not os.path.isdir('./score/overall/tags'):
+            os.makedirs('./score/overall/tags', exist_ok=True)
+    elif 'sort' in path:
+        if not os.path.isdir('./score/overall/sort'):
+            os.makedirs('./score/overall/sort', exist_ok=True)
+
+    rank = []
+    for book in shelf.content:
+        vote = (int(shelf.content[book]['score1']) +
+                int(shelf.content[book]['score2']) +
+                int(shelf.content[book]['score3']) +
+                int(shelf.content[book]['score4']) +
+                int(shelf.content[book]['score5']))
+        score = (2 * int(shelf.content[book]['score1']) +
+                 int(shelf.content[book]['score2']) +
+                 -1 * int(shelf.content[book]['score4']) +
+                 -2 * int(shelf.content[book]['score5']))
+        rank.append((book, score))
+    sort_score(rank)
+
+    with open('./score/overall/{}{}_overall.txt'.format(path, shelf.name),
+              'w', encoding='UTF-8') as f:
+        f.write('\n'.join('{}:{}'.format(tup[0], tup[1]) for tup in rank))
+
+
 if __name__ == '__main__':
     for txt in all_tag:
         path = 'tags/'
         with open(txt, 'r', encoding='UTF-8') as f:
             text = f.read()
         shelf = from_json(text)
-        sort_by_excellent(shelf, path)
-        sort_by_ratio(shelf, path)
-        sort_by_bad(shelf, path)
-        sort_by_votes(shelf, path)
+        sort_by_overall(shelf, path)
 
     for txt in all_sort:
         path = 'sort/'
         with open(txt, 'r', encoding='UTF-8') as f:
             text = f.read()
         shelf = from_json(text)
-        sort_by_excellent(shelf, path)
-        sort_by_ratio(shelf, path)
-        sort_by_bad(shelf, path)
-        sort_by_votes(shelf, path)
+        sort_by_overall(shelf, path)
