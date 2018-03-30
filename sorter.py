@@ -1,6 +1,7 @@
 from zxcs8 import *
 from glob import glob
 import os
+import numpy as np
 
 
 all_tag = glob('./tags/*.txt')
@@ -116,10 +117,36 @@ def sort_by_overall(shelf, path):
                  int(shelf.content[book]['score2']) +
                  -1 * int(shelf.content[book]['score4']) +
                  -2 * int(shelf.content[book]['score5']))
-        rank.append((book, score))
+        try:
+            rank.append((book, round(score / vote, 3)))
+        except ZeroDivisionError:
+            rank.append((book, -1))
+
     sort_score(rank)
 
     with open('./score/overall/{}{}_overall.txt'.format(path, shelf.name),
+              'w', encoding='UTF-8') as f:
+        f.write('\n'.join('{}:{}'.format(tup[0], tup[1]) for tup in rank))
+
+
+def sort_by_score(shelf, path):
+    if 'tags' in path:
+        if not os.path.isdir('./score/score/tags'):
+            os.makedirs('./score/score/tags', exist_ok=True)
+    elif 'sort' in path:
+        if not os.path.isdir('./score/score/sort'):
+            os.makedirs('./score/score/sort', exist_ok=True)
+
+    rank = []
+    for book in shelf.content:
+        score = (2 * int(shelf.content[book]['score1']) +
+                 int(shelf.content[book]['score2']) +
+                 -1 * int(shelf.content[book]['score4']) +
+                 -2 * int(shelf.content[book]['score5']))
+        rank.append((book, score))
+    sort_score(rank)
+
+    with open('./score/score/{}{}_score.txt'.format(path, shelf.name),
               'w', encoding='UTF-8') as f:
         f.write('\n'.join('{}:{}'.format(tup[0], tup[1]) for tup in rank))
 
@@ -130,6 +157,7 @@ if __name__ == '__main__':
         with open(txt, 'r', encoding='UTF-8') as f:
             text = f.read()
         shelf = from_json(text)
+        sort_by_score(shelf, path)
         sort_by_overall(shelf, path)
 
     for txt in all_sort:
@@ -137,4 +165,5 @@ if __name__ == '__main__':
         with open(txt, 'r', encoding='UTF-8') as f:
             text = f.read()
         shelf = from_json(text)
+        sort_by_score(shelf, path)
         sort_by_overall(shelf, path)
