@@ -10,12 +10,10 @@ def main():
 
     os.makedirs('./tags/', exist_ok=True)
     for name, link in tags.items():
-        path = 'tags/'
+        path = 'tags'
         temp_shelf = Shelf(link, name)
         temp_shelf.get_books()
-        sort_by_bad(temp_shelf, path)
-        sort_by_excellent(temp_shelf, path)
-        sort_by_ratio(temp_shelf, path)
+        save_score(*(sort_by_overall(shelf) + (path,)))
 
         shelf_json = temp_shelf.to_json()
 
@@ -24,12 +22,10 @@ def main():
 
     os.makedirs('./sort/', exist_ok=True)
     for name, link in sort.items():
-        path = 'sort/'
+        path = 'sort'
         temp_shelf = Shelf(link, name)
         temp_shelf.get_books()
-        sort_by_bad(temp_shelf, path)
-        sort_by_excellent(temp_shelf, path)
-        sort_by_ratio(temp_shelf, path)
+        save_score(*(sort_by_overall(shelf) + (path,)))
 
         shelf_json = temp_shelf.to_json()
 
