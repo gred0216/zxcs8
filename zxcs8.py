@@ -25,7 +25,7 @@ monkey.patch_all()
 
 
 class Book(dict):
-    '''Book is a dictionary that stores information of book.'''
+    '''Book is a dict that stores information of book.'''
 
     def __init__(self, info):
         '''Create a new Book instance
@@ -45,13 +45,14 @@ class Book(dict):
         self['url'] = info.get('url')  # website page of the book
         self['dllink'] = info.get('dllink')  # download page of the book
 
-    def download(self):
+    def download(self, path=''):
         '''Download the book.
 
-        The file will be in 'download' folder under current working directory.
+        Open download page of the book and find file download links.
+        Download the file and store in './download'.
 
         Returns:
-            return if exception occured.
+            return None if exception occured.
 
         '''
         check_sleep_time()
@@ -60,6 +61,8 @@ class Book(dict):
         while retry:
             try:
                 g = requests.get(self['dllink'], headers=headers, timeout=30)
+            except KeyError:
+                logger.error('Book %s has no download link' % self['name'])
             except requests.exceptions.ConnectionError:
                 retry -= 1
                 if retry != 0:
@@ -67,10 +70,10 @@ class Book(dict):
                                   'Retrying in 1 minute. '
                                   'Retries left: %d'
                                   % (self['dllink'], retry)))
-                    time.sleep(3)
+                    time.sleep(60)
                 else:
-                    logger.error(('Unable to open download links from %s'
-                                  ': ConnectTimeout' % self['dllink']))
+                    logger.error(('Unable to open download link %s'
+                                  ': ConnectionError' % self['dllink']))
                     return None
                 continue
             except requests.exceptions.ConnectTimeout:
@@ -82,7 +85,7 @@ class Book(dict):
                                   % (self['dllink'], retry)))
                     time.sleep(3)
                 else:
-                    logger.error(('Unable to open download link from %s'
+                    logger.error(('Unable to open download link %s'
                                   ': ConnectTimeout' % self['dllink']))
                     return None
                 continue
@@ -99,7 +102,42 @@ class Book(dict):
             filelinks = [y.get('href') for y in spans if y]
 
         for i in filelinks:
-            dl = requests.get(i, stream=True, headers=headers)
+            check_sleep_time()
+            retry = 5
+
+            while retry:
+                try:
+                    dl = requests.get(i, stream=True, headers=headers)
+                except requests.exceptions.ConnectionError:
+                    retry -= 1
+                    if retry != 0:
+                        logger.error(('ConnectionError on %s. '
+                                      'Retrying in 1 minute. '
+                                      'Retries left: %d'
+                                      % (i, retry)))
+                        time.sleep(60)
+                    else:
+                        logger.error(('Unable to download %s'
+                                      ': ConnectionError' % i))
+                        return None
+                    continue
+                except requests.exceptions.ConnectTimeout:
+                    retry -= 1
+                    if retry != 0:
+                        logger.error(('ConnectTimeout on %s. '
+                                      'Retrying in 3 seconds. '
+                                      'Retries left: %d'
+                                      % (i, retry)))
+                        time.sleep(3)
+                    else:
+                        logger.error(('Unable to download %s'
+                                      ': ConnectTimeout' % i))
+                        return None
+                    continue
+                break
+
+            reset_last_retrieve()
+
             filename_extension = re.search('\d/.*?(\..*)', i)[1]
             if dl.ok:
                 break
@@ -108,9 +146,9 @@ class Book(dict):
                 return
 
         # Create 'download' folder under current working directory
-        if not os.path.isdir('./download/'):
-            os.makedirs('./download/')
-        with open('./download/' + self['name'] +
+        if not os.path.isdir('./download/{}/'.format(path)):
+            os.makedirs('./download/{}/'.format(path))
+        with open('./download/{}/'.format(path) + self['name'] +
                   filename_extension, 'wb') as f:
             copyfileobj(dl.raw, f)
         logger.info("Book '" + self['name'] + "' download completed")
@@ -152,7 +190,6 @@ class Shelf:
         self.url = url
         self.name = name
         self.content = {}
-        self.book_links = []
         self.failed_page = []
         self.shelftype = shelftype
         self.download_count = 0
@@ -445,8 +482,8 @@ def get_book_info(page_url):
     try:
         result['dllink'] = soup4.find(class_='down_2').a.get('href')
     except AttributeError:
-        logger.warning('Unable to get download link')
-        results['dllink'] = ''
+        logger.warning('Unable to get download link of book %s'
+                       % result['name'])
 
     check_sleep_time()
     logger.info("Successfully retrieved info of %s" % page_url)
@@ -580,6 +617,7 @@ def main():
         f.write(s1.to_json())
 
     logger.info('stop logging')
+    logging.shutdown()
 
 
 if __name__ == '__main__':
