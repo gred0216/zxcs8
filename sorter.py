@@ -2,11 +2,13 @@ from zxcs8 import *
 from glob import glob
 import os
 import math
+import rarfile
 
 
 all_tag = glob('./tags/*.txt')
 all_sort = glob('./sort/*.txt')
 logger = logging.getLogger('zxcs8')
+downloaded = set()
 
 
 def sort_score(score_list):
@@ -120,18 +122,61 @@ def save_score(rank_type, name, rank, path):
 
 
 def download_top(shelf, rank, num, download_path):
+    global downloaded
     book_num = shelf.get_book_num()
     if book_num < num:
         logger.warning('Only {} book(s) in the Shelf {}'
                        .format(book_num, shelf.name))
         num = book_num
-    for i in range(num):
-        shelf.content[rank[i][0]].download(path=download_path)
+    i = 0
+    while i < num:
+        if (rank[i][0], shelf.name) not in downloaded:
+            shelf.content[rank[i][0]].download(path=download_path)
+            downloaded.add((rank[i][0], shelf.name))
+        else:
+            num += 1
+            logger.warning(('Book {} is already downloaded in {}.'
+                            ' Skipping this book.'
+                            .format(rank[i][0], shelf.name)))
+        i += 1
     logger.info(('Successfully downloaded top {} books of Shelf {}'
                  .format(num, shelf.name)))
 
 
-if __name__ == '__main__':
+def extract_all_rar():
+    '''
+    Extract txt from every rar and delete rar file under download folder.
+    '''
+    rar = glob('./download/**/*.rar', recursive=True)
+    for item in rar:
+        rf = rarfile.RarFile(item)
+        for f in rf.infolist():
+            if '.txt' in f.filename:
+                rf.extract(f, path=os.path.dirname(item))
+        os.remove(item)
+        logger.info('Successfully extract {}'.format(item))
+    logger.info('All rar extracted')
+
+
+def convert_to_tc():
+    '''
+    Convert txt file and path name to traditional Chinese.
+    Old file and folder will be deleted when finished.
+    '''
+    txt = glob('./download/**/*.txt', recursive=True)
+    for i in txt:
+        with open(i, 'r+', encoding='gbk', errors='ignore') as f:
+            text = f.read()
+            new_text = convert_to_zhtw(text)
+        with open(i, 'w', encoding='UTF-8') as f:
+            f.write(new_text)
+        os.renames(i, convert_to_zhtw(i))
+        logger.info('{} converted to Traditional Chinese'
+                    .format(os.path.basename(i)))
+    logger.info('All txt converted to Traditional Chinese')
+
+
+def main():
     logger = set_log()
     logger.info('start logging')
 
@@ -152,6 +197,20 @@ if __name__ == '__main__':
         overall = sort_by_overall(shelf)
         save_score(*(overall + (path,)))
         download_top(shelf, overall[2], 3, '{}/{}'.format(path, shelf.name))
+
+    extract_all_rar()
+    convert_to_tc()
+
+    logger.info('stop logging')
+    logging.shutdown()
+
+
+if __name__ == '__main__':
+    logger = set_log()
+    logger.info('start logging')
+
+    extract_all_rar()
+    convert_to_tc()
 
     logger.info('stop logging')
     logging.shutdown()
