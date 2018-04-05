@@ -33,6 +33,10 @@ Excellent(仙草):2, Good(糧草):1, Fair(乾草):0, Poor(枯草):-1, Bad(毒草
 * Score: sorted by total score
 
 * Overall: sorted by average score + popular score
+
+  Average score: total score divided by total votes
+  
+  Popular score: log1000(total votes)
 ## TODO
 * manually set filter rules(maybe not)
 * Update per period(maybe per month)
