@@ -3,6 +3,7 @@ from glob import glob
 import os
 import math
 import rarfile
+from chardet import detect
 
 
 all_tag = glob('./tags/*.txt')
@@ -130,14 +131,17 @@ def download_top(shelf, rank, num, download_path):
         num = book_num
     i = 0
     while i < num:
-        if (rank[i][0], shelf.name) not in downloaded:
+        is_downloaded = False
+        while not is_downloaded:
+            for book, shelf in downloaded:
+                if rank[i][0] == book:
+                    num += 1
+                    logger.warning(('Book {} is already downloaded in {}.'
+                                    ' Skipping this book.'
+                                    .format(rank[i][0], shelf.name)))
+                    is_downloaded = True
             shelf.content[rank[i][0]].download(path=download_path)
             downloaded.add((rank[i][0], shelf.name))
-        else:
-            num += 1
-            logger.warning(('Book {} is already downloaded in {}.'
-                            ' Skipping this book.'
-                            .format(rank[i][0], shelf.name)))
         i += 1
     logger.info(('Successfully downloaded top {} books of Shelf {}'
                  .format(num, shelf.name)))
@@ -165,7 +169,9 @@ def convert_to_tc():
     '''
     txt = glob('./download/**/*.txt', recursive=True)
     for i in txt:
-        with open(i, 'r+', encoding='gbk', errors='ignore') as f:
+        with open(i, 'rb') as b:
+            encoding = detect(b.readline())['encoding']
+        with open(i, 'r+', encoding=encoding, errors='ignore') as f:
             text = f.read()
             new_text = convert_to_zhtw(text)
         with open(i, 'w', encoding='UTF-8') as f:
