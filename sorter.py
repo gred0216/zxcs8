@@ -3,13 +3,20 @@ from glob import glob
 import os
 import math
 import rarfile
-from chardet import detect
+from chardet.universaldetector import UniversalDetector
+from itertools import islice
+from ast import literal_eval
 
 
 all_tag = glob('./tags/*.txt')
 all_sort = glob('./sort/*.txt')
 logger = logging.getLogger('zxcs8')
-downloaded = set()
+
+if os.path.isfile('downloaded.txt'):
+    with open('downloaded.txt', 'r', encoding='UTF-8') as f:
+        downloaded = literal_eval(f.read())
+else:
+    downloaded = set()
 
 
 def sort_score(score_list):
@@ -133,15 +140,18 @@ def download_top(shelf, rank, num, download_path):
     while i < num:
         is_downloaded = False
         while not is_downloaded:
-            for book, shelf in downloaded:
-                if rank[i][0] == book:
+            for d_book, d_shelf in downloaded:
+                if rank[i][0] == d_book:
                     num += 1
                     logger.warning(('Book {} is already downloaded in {}.'
                                     ' Skipping this book.'
                                     .format(rank[i][0], shelf.name)))
                     is_downloaded = True
-            shelf.content[rank[i][0]].download(path=download_path)
-            downloaded.add((rank[i][0], shelf.name))
+                    break
+            if not is_downloaded:
+                shelf.content[rank[i][0]].download(path=download_path)
+                downloaded.add((rank[i][0], shelf.name))
+                is_downloaded = True
         i += 1
     logger.info(('Successfully downloaded top {} books of Shelf {}'
                  .format(num, shelf.name)))
@@ -167,16 +177,25 @@ def convert_to_tc():
     Convert txt file and path name to traditional Chinese.
     Old file and folder will be deleted when finished.
     '''
+    detector = UniversalDetector()
     txt = glob('./download/**/*.txt', recursive=True)
     for i in txt:
+        detector.reset()
         with open(i, 'rb') as b:
-            encoding = detect(b.readline())['encoding']
+            lines = list(islice(b, 50, 55))
+        for line in lines:
+            detector.feed(line)
+            if detector.done:
+                break
+        detector.close()
+        encoding = detector.result['encoding']
         with open(i, 'r+', encoding=encoding, errors='ignore') as f:
             text = f.read()
             new_text = convert_to_zhtw(text)
         with open(i, 'w', encoding='UTF-8') as f:
             f.write(new_text)
-        os.renames(i, convert_to_zhtw(i))
+        if i != convert_to_zhtw(i):
+            os.renames(i, convert_to_zhtw(i))
         logger.info('{} converted to Traditional Chinese'
                     .format(os.path.basename(i)))
     logger.info('All txt converted to Traditional Chinese')
@@ -204,14 +223,18 @@ def main():
         save_score(*(overall + (path,)))
         download_top(shelf, overall[2], 3, '{}/{}'.format(path, shelf.name))
 
-    extract_all_rar()
-    convert_to_tc()
+    # extract_all_rar()
+    # convert_to_tc()
+
+    with open('downloaded.txt', 'w', encoding='UTF-8') as f:
+        f.write(repr(downloaded))
 
     logger.info('stop logging')
     logging.shutdown()
 
 
 if __name__ == '__main__':
+    
     logger = set_log()
     logger.info('start logging')
 
@@ -220,3 +243,5 @@ if __name__ == '__main__':
 
     logger.info('stop logging')
     logging.shutdown()
+    
+    # main()
