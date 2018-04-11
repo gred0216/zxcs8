@@ -13,7 +13,7 @@ This is a crawler of [知軒藏書](http://www.zxcs8.com/map.html)
 * Sorting
 * Download top books by sorted overall ranking
 * Auto extract rar files
-* Convert the txt files to Traditional Chinese in UTF-8
+* Detect txt encoding and convert to Traditional Chinese in UTF-8
 
 ### Sorting
 There are five voting level, each level is given an score accordingly:
@@ -38,5 +38,4 @@ Excellent(仙草):2, Good(糧草):1, Fair(乾草):0, Poor(枯草):-1, Bad(毒草
   
   Popular score: log1000(total votes)
 ## TODO
-* manually set filter rules(maybe not)
-* Update per period(maybe per month)
+* Update per period (maybe per month)
