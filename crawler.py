@@ -4,6 +4,12 @@ from sorter import *
 
 
 def main():
+    '''
+    The main() do three tasks:
+    1. Get every category and create shelf
+    2. Get every book of the shelf
+    3. Save the shelf and ranking result
+    '''
     logger = set_log()
     logger.info('scrawler start')
     tags, sort = get_category()
@@ -37,6 +43,9 @@ def main():
 
 
 def set_log():
+    '''
+    Return logger.
+    '''
     logger = logging.getLogger('zxcs8')
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s %(levelname)-8s: %(message)s')
@@ -56,6 +65,9 @@ def set_log():
 
 
 def get_category():
+    '''
+    Return all categories and their links in tag and sort
+    '''
     r = requests.get('http://www.zxcs8.com/map.html')
     r.encoding = 'UTF-8'
     if r.ok:

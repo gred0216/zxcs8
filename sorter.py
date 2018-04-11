@@ -130,6 +130,10 @@ def save_score(rank_type, name, rank, path):
 
 
 def download_top(shelf, rank, num, download_path):
+    '''
+    Download top N books from a shelf sorted by different ranking
+    If one book was downloaded before, it will be skipped.
+    '''
     global downloaded
     book_num = shelf.get_book_num()
     if book_num < num:
@@ -175,11 +179,12 @@ def extract_all_rar():
 def convert_to_tc():
     '''
     Convert txt file and path name to traditional Chinese.
-    Old file and folder will be deleted when finished.
+    File and folder will be renamed.
     '''
     detector = UniversalDetector()
     txt = glob('./download/**/*.txt', recursive=True)
     for i in txt:
+        # Detect the txt encoding
         detector.reset()
         with open(i, 'rb') as b:
             lines = list(islice(b, 50, 55))
@@ -189,6 +194,8 @@ def convert_to_tc():
                 break
         detector.close()
         encoding = detector.result['encoding']
+
+        # Convert to traditional Chinese
         with open(i, 'r+', encoding=encoding, errors='ignore') as f:
             text = f.read()
             new_text = convert_to_zhtw(text)
@@ -223,8 +230,8 @@ def main():
         save_score(*(overall + (path,)))
         download_top(shelf, overall[2], 3, '{}/{}'.format(path, shelf.name))
 
-    # extract_all_rar()
-    # convert_to_tc()
+    extract_all_rar()
+    convert_to_tc()
 
     with open('downloaded.txt', 'w', encoding='UTF-8') as f:
         f.write(repr(downloaded))
