@@ -10,13 +10,31 @@ from ast import literal_eval
 
 all_tag = glob('./tags/*.txt')
 all_sort = glob('./sort/*.txt')
-logger = logging.getLogger('zxcs8')
 
 if os.path.isfile('downloaded.txt'):
     with open('downloaded.txt', 'r', encoding='UTF-8') as f:
         downloaded = literal_eval(f.read())
 else:
     downloaded = set()
+
+
+def set_log():
+    logger = logging.getLogger('zxcs8')
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s %(levelname)-8s: %(message)s')
+
+    # filehandler write to sorter.log under current working directory
+    fh = logging.FileHandler('sorter.log', encoding='UTF-8')
+    fh.setFormatter(formatter)
+    fh.setLevel(logging.INFO)
+
+    # streamhandler only print out log warning or above
+    sh = logging.StreamHandler()
+    sh.setFormatter(formatter)
+    sh.setLevel(logging.WARNING)
+    logger.addHandler(fh)
+    logger.addHandler(sh)
+    return logger
 
 
 def sort_score(score_list):
@@ -73,6 +91,9 @@ def sort_by_votes(shelf):
 
 
 def sort_by_overall(shelf):
+    '''
+    Overall ranking
+    '''
     rank = []
     for book in shelf.content:
         # book_name = re.search('《.*》', book)[0]
@@ -164,6 +185,7 @@ def download_top(shelf, rank, num, download_path):
 def extract_all_rar():
     '''
     Extract txt from every rar and delete rar file under download folder.
+    Need unrar.exe in PATH or working directory
     '''
     rar = glob('./download/**/*.rar', recursive=True)
     for item in rar:
@@ -193,7 +215,12 @@ def convert_to_tc():
             if detector.done:
                 break
         detector.close()
-        encoding = detector.result['encoding']
+        if detector.result['confidence'] <= 0.5:
+            logger.warning('Detetor is unable to detect encoding of {}. '
+                           'Using utf-16-le'.format(convert_to_zhtw(i)))
+            encoding = 'utf-16-le'
+        else:
+            encoding = detector.result['encoding']
 
         # Convert to traditional Chinese
         with open(i, 'r+', encoding=encoding, errors='ignore') as f:
@@ -204,7 +231,7 @@ def convert_to_tc():
         if i != convert_to_zhtw(i):
             os.renames(i, convert_to_zhtw(i))
         logger.info('{} converted to Traditional Chinese'
-                    .format(os.path.basename(i)))
+                    .format(os.path.basename(convert_to_zhtw(i))))
     logger.info('All txt converted to Traditional Chinese')
 
 
