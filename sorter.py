@@ -112,7 +112,7 @@ def sort_by_overall(shelf):
             rank.append((book_name,
                          round(score / vote + math.log(vote, 1000), 3)))
         except ZeroDivisionError:
-            rank.append((book_name, -1))
+            rank.append((book_name, 0))
 
     sort_score(rank)
 
@@ -140,8 +140,8 @@ def save_score(rank_type, name, rank, path):
         if not os.path.isdir('./score/%s/sort' % rank_type):
             os.makedirs('./score/%s/sort' % rank_type)
     else:
-        if not os.path.isdir('./score/%s/other' % rank_type):
-            os.makedirs('./score/%s/other' % rank_type)
+        if not os.path.isdir('./score/%s' % rank_type):
+            os.makedirs('./score/%s' % rank_type)
 
     with open('./score/{}/{}/{}_{}.txt'.format(
         rank_type, path, name, rank_type),
@@ -170,7 +170,7 @@ def download_top(shelf, rank, num, download_path):
                     num += 1
                     logger.warning(('Book {} is already downloaded in {}.'
                                     ' Skipping this book.'
-                                    .format(rank[i][0], shelf.name)))
+                                    .format(rank[i][0], d_shelf.name)))
                     is_downloaded = True
                     break
             if not is_downloaded:
@@ -235,6 +235,29 @@ def convert_to_tc():
     logger.info('All txt converted to Traditional Chinese')
 
 
+def main_shelf():
+    main_shelf = Shelf()
+    main_shelf.name = 'main'
+    path = ''
+    for i in all_tag:
+        with open(i, 'r', encoding='UTF-8') as f:
+            text = f.read()
+        shelf = from_json(text)
+        main_shelf.content.update(shelf.content)
+    for i in all_sort:
+        with open(i, 'r', encoding='UTF-8') as f:
+            text = f.read()
+        shelf = from_json(text)
+        main_shelf.content.update(shelf.content)
+
+    overall = sort_by_overall(main_shelf)
+    save_score(*(overall + (path,)))
+    main_json = main_shelf.to_json()
+    with open('main.txt', 'w', encoding='UTF-8') as f:
+        f.write(main_json)
+    return main_shelf, overall
+
+
 def main():
     logger = set_log()
     logger.info('start logging')
@@ -268,14 +291,16 @@ def main():
 
 
 if __name__ == '__main__':
-    
+
     logger = set_log()
     logger.info('start logging')
 
+    shelf, rank = main_shelf()
+    download_top(shelf, rank[2], 100, 'main')
     extract_all_rar()
     convert_to_tc()
 
     logger.info('stop logging')
     logging.shutdown()
-    
+
     # main()
