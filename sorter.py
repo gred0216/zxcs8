@@ -219,6 +219,8 @@ def convert_to_tc():
             logger.warning('Detetor is unable to detect encoding of {}. '
                            'Using utf-16-le'.format(convert_to_zhtw(i)))
             encoding = 'utf-16-le'
+        elif detector.result['encoding'] == 'GB2312':
+            encoding = 'GB18030'
         else:
             encoding = detector.result['encoding']
 
@@ -295,11 +297,54 @@ if __name__ == '__main__':
     logger = set_log()
     logger.info('start logging')
 
+    '''
     shelf, rank = main_shelf()
     download_top(shelf, rank[2], 100, 'main')
     extract_all_rar()
     convert_to_tc()
+    '''
+    rar = glob('./test/**/*.rar', recursive=True)
+    for item in rar:
+        rf = rarfile.RarFile(item)
+        for f in rf.infolist():
+            if '.txt' in f.filename:
+                rf.extract(f, path=os.path.dirname(item))
+        os.remove(item)
+        logger.info('Successfully extract {}'.format(item))
+    logger.info('All rar extracted')
 
+    detector = UniversalDetector()
+    txt = glob('./test/**/*.txt', recursive=True)
+    for i in txt:
+        # Detect the txt encoding
+        detector.reset()
+        with open(i, 'rb') as b:
+            lines = list(islice(b, 50, 55))
+        for line in lines:
+            detector.feed(line)
+            if detector.done:
+                break
+        detector.close()
+        if detector.result['confidence'] <= 0.5:
+            logger.warning('Detetor is unable to detect encoding of {}. '
+                           'Using utf-16-le'.format(convert_to_zhtw(i)))
+            encoding = 'utf-16-le'
+        elif detector.result['encoding'] == 'GB2312':
+            encoding = 'GB18030'
+        else:
+            encoding = detector.result['encoding']
+
+        # Convert to traditional Chinese
+        with open(i, 'r+', encoding=encoding, errors='ignore') as f:
+            text = f.read()
+            new_text = convert_to_zhtw(text)
+        with open(i, 'w', encoding='UTF-8') as f:
+            f.write(new_text)
+        if i != convert_to_zhtw(i):
+            os.renames(i, convert_to_zhtw(i))
+        logger.info('{} converted to Traditional Chinese'
+                    .format(os.path.basename(convert_to_zhtw(i))))
+    logger.info('All txt converted to Traditional Chinese')
     logger.info('stop logging')
     logging.shutdown()
 
