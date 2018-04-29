@@ -204,17 +204,28 @@ def convert_to_tc():
     File and folder will be renamed.
     '''
     detector = UniversalDetector()
+
     txt = glob('./download/**/*.txt', recursive=True)
     for i in txt:
         # Detect the txt encoding
-        detector.reset()
-        with open(i, 'rb') as b:
-            lines = list(islice(b, 50, 55))
-        for line in lines:
-            detector.feed(line)
-            if detector.done:
-                break
-        detector.close()
+        detect_retry = 3
+        start = 50
+        while detect_retry:
+            detector.reset()
+            with open(i, 'rb') as b:
+                lines = list(islice(b, start, start + 5))
+            for line in lines:
+                detector.feed(line)
+                if detector.done:
+                    break
+            detector.close()
+            if detector.result['confidence'] <= 0.5:
+                detect_retry -= 1
+                start += 50
+                logger.warning('Detetor is unable to detect encoding of {}. '
+                               'Retrying'.format(convert_to_zhtw(i)))
+                continue
+            break
         if detector.result['confidence'] <= 0.5:
             logger.warning('Detetor is unable to detect encoding of {}. '
                            'Using utf-16-le'.format(convert_to_zhtw(i)))
@@ -297,10 +308,12 @@ if __name__ == '__main__':
     logger = set_log()
     logger.info('start logging')
 
-    '''
     shelf, rank = main_shelf()
     download_top(shelf, rank[2], 100, 'main')
     extract_all_rar()
     convert_to_tc()
-    '''
+
+    logger.info('stop logging')
+    logging.shutdown()
+
     # main()
