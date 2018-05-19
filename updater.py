@@ -108,7 +108,7 @@ def main():
                 except IndexError:
                     break
             gevent.joinall(jobs)
-            time.sleep(3)
+            time.sleep(1)
         with open(sort, 'w', encoding='UTF-8') as f:
             f.write(shelf.to_json())
 
