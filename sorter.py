@@ -198,15 +198,14 @@ def extract_all_rar():
     logger.info('All rar extracted')
 
 
-def convert_to_tc():
+def convert_txt_to_tc(txt_list):
     '''
     Convert txt file and path name to traditional Chinese.
     File and folder will be renamed.
     '''
     detector = UniversalDetector()
 
-    txt = glob('./download/**/*.txt', recursive=True)
-    for i in txt:
+    for i in txt_list:
         # Detect the txt encoding
         detect_retry = 3
         start = 50
@@ -282,7 +281,7 @@ def main():
         shelf = from_json(text)
         overall = sort_by_overall(shelf)
         save_score(*(overall + (path,)))
-        download_top(shelf, overall[2], 3, '{}/{}'.format(path, shelf.name))
+        # download_top(shelf, overall[2], 3, '{}/{}'.format(path, shelf.name))
 
     for txt in all_sort:
         path = 'sort'
@@ -291,10 +290,11 @@ def main():
         shelf = from_json(text)
         overall = sort_by_overall(shelf)
         save_score(*(overall + (path,)))
-        download_top(shelf, overall[2], 3, '{}/{}'.format(path, shelf.name))
+        # download_top(shelf, overall[2], 3, '{}/{}'.format(path, shelf.name))
 
     extract_all_rar()
-    convert_to_tc()
+    txt_list = glob('./download/**/*.txt', recursive=True)
+    convert_txt_to_tc(txt_list)
 
     with open('downloaded.txt', 'w', encoding='UTF-8') as f:
         f.write(repr(downloaded))
