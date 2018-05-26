@@ -23,7 +23,7 @@
             "score2": "4",
             "score3": "10",
             "score4": "10",
-            "score5": "236",
+            "score5": "239",
             "size": "11.0 MB\r\n",
             "url": "http://www.zxcs8.com/post/10899"
         },
@@ -35,7 +35,7 @@
             "score1": "18",
             "score2": "5",
             "score3": "5",
-            "score4": "3",
+            "score4": "4",
             "score5": "17",
             "size": "6.04 MB\r\n",
             "url": "http://www.zxcs8.com/post/10125"
