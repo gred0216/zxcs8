@@ -1,5 +1,6 @@
 from zxcs8 import *
 from glob import glob
+import sorter
 
 
 all_tag = glob('./tags/*.txt', recursive=True)
@@ -28,7 +29,13 @@ def set_log():
     return logger
 
 
-def update_book(book):
+def update_book_score(book):
+    '''
+    Update the scores of a book.
+
+    Arg:
+        book: zxcs8.book
+    '''
     score = book_score + re.search('post/(\d*)', book['url']).groups()[0]
 
     retry = 5
@@ -74,44 +81,119 @@ def update_book(book):
     logger.info('Successfully updated {}'.format(book['name']))
 
 
+def update_shelf(shelf_path):
+    '''
+    Update every book score in the shelf.
+    If there is any new book, add it to the shelf.
+
+    Arg:
+        shelf_path: directory of the shelf json file
+    '''
+    with open(shelf_path, 'r', encoding='UTF-8') as f:
+        shelf = from_json(f.read())
+    book_list = list(shelf.content.keys())
+
+    # Check if there is any new book
+    page = 1
+    while page:
+        currect_page = shelf.pages + str(page)
+        check_sleep_time()
+        retry = 5
+
+        while retry:
+            try:
+                r1 = requests.get(currect_page)
+            except requests.exceptions.ConnectionError:
+                retry -= 1
+                if retry != 0:
+                    logger.error(('ConnectionError on %s. '
+                                  'Retrying in 1 minute. '
+                                  'Retries left: %d'
+                                  % (currect_page, retry)))
+                    time.sleep(3)
+                else:
+                    logger.error(('Unable to get book links from %s'
+                                  ': ConnectTimeout' % currect_page))
+                    return None
+                continue
+            except requests.exceptions.ConnectTimeout:
+                retry -= 1
+                if retry != 0:
+                    logger.error(('ConnectTimeout on %s. '
+                                  'Retrying in 3 seconds. '
+                                  'Retries left: %d'
+                                  % (currect_page, retry)))
+                    time.sleep(3)
+                else:
+                    logger.error(('Unable to get book links from %s'
+                                  ': ConnectTimeout' % currect_page))
+                    return None
+                continue
+            break
+
+        reset_last_retrieve()
+
+        if not r1.ok:
+            self.failed_page.append(currect_page)
+            logger.error('Unable to get book links of %s: %d error' %
+                         (currect_page, r1.status_code))
+        else:
+            soup = BeautifulSoup(r1.text)
+            all_dt = soup.find_all('dt')
+            links = []
+            for booklink in all_dt:
+                bookname = re.findall('(.*?)作者', booklink.text)[0]
+                if bookname not in book_list:
+                    links.append(booklink.a.get('href'))
+                else:
+                    page = -1
+                    break
+
+            while links:
+                jobs = []
+                for i in range(3):
+                    try:
+                        jobs.append(gevent.spawn(shelf._create_book_from_link,
+                                                 links.pop()))
+                    except IndexError:
+                        break
+                gevent.joinall(jobs)
+            logger.info('Successfully updated ' + currect_page)
+            time.sleep(1)
+
+        page += 1
+
+    # Update book score
+    while book_list:
+        jobs = []
+        for i in range(5):
+            try:
+                book = shelf.content[book_list.pop()]
+                jobs.append(gevent.spawn(update_book_score, book))
+            except IndexError:
+                break
+        gevent.joinall(jobs)
+        time.sleep(1)
+
+    with open(shelf_path, 'w', encoding='UTF-8') as f:
+        f.write(shelf.to_json())
+
+    logger.info('Successfully updated ' + shelf.name)
+
+
 def main():
     logger = set_log()
     logger.info('start logging')
 
     for tag in all_tag:
-        with open(tag, 'r', encoding='UTF-8') as f:
-            shelf = from_json(f.read())
-        book_list = list(shelf.content.keys())
-        while book_list:
-            jobs = []
-            for i in range(5):
-                try:
-                    book = shelf.content[book_list.pop()]
-                    jobs.append(gevent.spawn(update_book, book))
-                except IndexError:
-                    break
-            gevent.joinall(jobs)
-            time.sleep(3)
-        with open(tag, 'w', encoding='UTF-8') as f:
-            f.write(shelf.to_json())
+        update_shelf(tag)
 
     for sort in all_sort:
-        with open(sort, 'r', encoding='UTF-8') as f:
-            shelf = from_json(f.read())
-        book_list = list(shelf.content.keys())
-        while book_list:
-            jobs = []
-            for i in range(5):
-                try:
-                    book = shelf.content[book_list.pop()]
-                    jobs.append(gevent.spawn(update_book, book))
-                except IndexError:
-                    break
-            gevent.joinall(jobs)
-            time.sleep(1)
-        with open(sort, 'w', encoding='UTF-8') as f:
-            f.write(shelf.to_json())
+        update_shelf(sort)
 
+    sorter.main()
+
+    logger = set_log()
     logger.info('stop logging')
 
 
@@ -122,18 +204,7 @@ if __name__ == '__main__':
     logger.info('start logging')
 
     for txt in all_test:
-        with open(txt, 'r', encoding='UTF-8') as f:
-            shelf = from_json(f.read())
-        book_list = list(shelf.content.keys())
-        while book_list:
-            jobs = []
-            for i in range(5):
-                book = shelf.content[book_list.pop()]
-                jobs.append(gevent.spawn(update_book, book))
-            gevent.joinall(jobs)
-            time.sleep(3)
-    with open(txt, 'w', encoding='UTF-8') as f:
-        f.write(shelf.to_json())
-    '''
+        update_shelf(txt)
 
     logger.info('stop logging')
+    '''
