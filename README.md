@@ -1,6 +1,10 @@
 # zxcs8
 This is a crawler of [知軒藏書](http://www.zxcs8.com/map.html)
 
+# KNOWN BUG
+Tags in zxcs8 site have been changed. Some old tags are no longer available
+It will be fix in the recent update
+
 ## Feature
 * Create different category shelves from the site
 * Create custom shelf
