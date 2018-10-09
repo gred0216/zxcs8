@@ -1,5 +1,6 @@
 from zxcs8 import *
 from glob import glob
+from crawler import get_category, create_shelf
 import sorter
 
 
@@ -181,6 +182,23 @@ def update_shelf(shelf_path):
     logger.info('Successfully updated ' + shelf.name)
 
 
+def update_shelf_list():
+    old_sort = [os.path.splitext(os.path.basename(x))[0] for x in all_sort]
+    tag, sort = get_category()
+
+    for i in sort:
+        if i not in old_sort:
+            sort_shelf = create_shelf(i, tag[i])
+            shelf_json = sort_shelf.to_json()
+            with open('./sort/%s.txt' % i, 'w', encoding='UTF-8') as f:
+                f.write(shelf_json)
+    for i in old_sort:
+        if i not in sort:
+            os.makedirs('./old/sort', exist_ok=True)
+            os.rename('./sort/%s.txt' % i, './old/sort/%s.txt' % i)
+
+
+
 def main():
     logger = set_log()
     logger.info('start logging')
@@ -198,7 +216,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    update_shelf_list()
     '''
     logger = set_log()
     logger.info('start logging')
