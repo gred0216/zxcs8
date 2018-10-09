@@ -15,28 +15,17 @@ def main():
     tags, sort = get_category()
 
     os.makedirs('./tags/', exist_ok=True)
-    for name, link in tags.items():
-        path = 'tags'
-        temp_shelf = Shelf(link, name)
-        temp_shelf.get_books()
-        save_score(*(sort_by_overall(shelf) + (path,)))
-
-        shelf_json = temp_shelf.to_json()
-
-        with open('./tags/%s.txt' % name, 'w', encoding='UTF-8') as f:
-            f.write(shelf_json)
-
     os.makedirs('./sort/', exist_ok=True)
-    for name, link in sort.items():
+    for category in tags, sort:
+        for name, link in category.items():
+            path = 'tags'
+            tmp_shelf = create_shelf(name, link)
+            save_score(*(sort_by_overall(tmp_shelf) + (path,)))
+
+            shelf_json = tmp_shelf.to_json()
+            with open('./%s/%s.txt' % (path,name), 'w', encoding='UTF-8') as f:
+                f.write(shelf_json)
         path = 'sort'
-        temp_shelf = Shelf(link, name)
-        temp_shelf.get_books()
-        save_score(*(sort_by_overall(shelf) + (path,)))
-
-        shelf_json = temp_shelf.to_json()
-
-        with open('./sort/%s.txt' % name, 'w', encoding='UTF-8') as f:
-            f.write(shelf_json)
 
     logger.info('scrawler stop')
     logging.shutdown()
@@ -89,6 +78,12 @@ def get_category():
         sort[text] = href
 
     return tags, sort
+
+
+def create_shelf(shelf_name, shelf_link):
+    temp_shelf = Shelf(shelf_link, shelf_name)
+    temp_shelf.get_books()
+    return temp_shelf
 
 
 if __name__ == '__main__':
