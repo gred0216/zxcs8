@@ -324,7 +324,7 @@ class Shelf:
                 self._get_book_link(i)
                 reset_last_retrieve()
             logger.info("All %d book links of Shelf %s added" %
-                        (len(self.book_links), self.name))
+                        (len(self.content), self.name))
 
     def get_book_num(self):
         return len(self.content)
